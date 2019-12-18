@@ -5,7 +5,7 @@
 [![License: MIT/Apache-2.0](https://img.shields.io/crates/l/mitosis.svg)](#license)
 
 
-WIP
+WIP (Waiting on https://github.com/servo/ipc-channel/pull/249)
 
 This crate provides `mitosis::spawn()`, which is similar to `thread::spawn()` but will spawn a new process instead.
 
