@@ -8,6 +8,7 @@ fn main() {
     assert_eq!(five.recv().unwrap(), 5);
     assert_eq!(ten.recv().unwrap(), 55);
     assert_eq!(thirty.recv().unwrap(), 832040);
+    println!("Successfully calculated fibonacci values!");
 }
 
 fn fibonacci_par(n: u32) -> ipc::IpcReceiver<u32> {

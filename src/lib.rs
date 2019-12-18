@@ -18,7 +18,8 @@ pub fn init() {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct BootstrapData {
-    offset: isize,
+    wrapper_offset: isize,
+    fn_offset: isize,
     args_receiver: OpaqueIpcReceiver,
 }
 
@@ -29,17 +30,14 @@ fn bootstrap_ipc(token: String) {
     connection_bootstrap.send(tx).unwrap();
     let bootstrap_data = rx.recv().unwrap();
     unsafe {
-        let ptr = bootstrap_data.offset + init as *const () as isize;
-        let func: fn(OpaqueIpcReceiver) = mem::transmute(ptr);
-        func(bootstrap_data.args_receiver);
+        let ptr = bootstrap_data.wrapper_offset + init as *const () as isize;
+        let func: fn(isize, OpaqueIpcReceiver) = mem::transmute(ptr);
+        func(bootstrap_data.fn_offset, bootstrap_data.args_receiver);
     }
     process::exit(0);
 }
 
-pub fn spawn<F: FnOnce(A), A: Serialize + for<'de> Deserialize<'de>>(args: A, _: F) {
-    if mem::size_of::<F>() != 0 {
-        panic!("mitosis::spawn cannot be called with closures that have captures");
-    }
+pub fn spawn<A: Serialize + for<'de> Deserialize<'de>>(args: A, f: fn(A)) {
     let (server, token) = IpcOneShotServer::<IpcSender<BootstrapData>>::new().unwrap();
     // XXXManishearth use /proc/self/exe on linux
     let me = env::current_exe().unwrap();
@@ -52,18 +50,22 @@ pub fn spawn<F: FnOnce(A), A: Serialize + for<'de> Deserialize<'de>>(args: A, _:
     let (args_tx, args_rx) = ipc::channel().unwrap();
     args_tx.send(args).unwrap();
     // ASLR mitigation
-    let offset = run_func::<F, A> as *const () as isize - init as *const () as isize;
+    let init_loc = init as *const () as isize;
+    let fn_offset = f as *const () as isize - init_loc;
+    let wrapper_offset = run_func::<A> as *const () as isize - init_loc;
     let bootstrap = BootstrapData {
-        offset,
+        fn_offset,
+        wrapper_offset,
         args_receiver: args_rx.to_opaque(),
     };
     tx.send(bootstrap).unwrap();
 }
 
-unsafe fn run_func<F: FnOnce(A), A: Serialize + for<'de> Deserialize<'de>>(
+unsafe fn run_func<A: Serialize + for<'de> Deserialize<'de>>(
+    offset: isize,
     recv: OpaqueIpcReceiver,
 ) {
-    let function: F = mem::zeroed();
+    let function: fn(A) = mem::transmute(offset + init as *const () as isize);
 
     let args = recv.to().recv().unwrap();
     function(args)
