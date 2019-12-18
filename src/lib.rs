@@ -47,7 +47,6 @@ pub fn init() {
 #[derive(Serialize, Deserialize, Debug)]
 struct BootstrapData {
     wrapper_offset: isize,
-    fn_offset: isize,
     args_receiver: OpaqueIpcReceiver,
     return_sender: OpaqueIpcSender,
 }
@@ -60,12 +59,8 @@ fn bootstrap_ipc(token: String) {
     let bootstrap_data = rx.recv().unwrap();
     unsafe {
         let ptr = bootstrap_data.wrapper_offset + init as *const () as isize;
-        let func: fn(isize, OpaqueIpcReceiver, OpaqueIpcSender) = mem::transmute(ptr);
-        func(
-            bootstrap_data.fn_offset,
-            bootstrap_data.args_receiver,
-            bootstrap_data.return_sender,
-        );
+        let func: fn(OpaqueIpcReceiver, OpaqueIpcSender) = mem::transmute(ptr);
+        func(bootstrap_data.args_receiver, bootstrap_data.return_sender);
     }
     process::exit(0);
 }
@@ -81,7 +76,8 @@ fn bootstrap_ipc(token: String) {
 /// ```
 ///
 /// The function itself cannot capture anything from its environment, but you can
-/// explicitly pass down data through the `args` parameter.
+/// explicitly pass down data through the `args` parameter. This function will panic if
+/// you pass a closure that captures anything from its environment.
 ///
 /// The `JoinHandle` returned by this function can be used to wait for
 /// the child process to finish, and obtain the return value of the function it executed.
@@ -96,10 +92,17 @@ fn bootstrap_ipc(token: String) {
 /// // do some other work
 /// println!("Deduplicated {:?}", handle.join());
 /// ```
-pub fn spawn<A: Serialize + for<'de> Deserialize<'de>, R: Serialize + for<'de> Deserialize<'de>>(
+pub fn spawn<
+    F: FnOnce(A) -> R,
+    A: Serialize + for<'de> Deserialize<'de>,
+    R: Serialize + for<'de> Deserialize<'de>,
+>(
     args: A,
-    f: fn(A) -> R,
+    _: F,
 ) -> JoinHandle<R> {
+    if mem::size_of::<F>() != 0 {
+        panic!("mitosis::spawn cannot be called with closures that capture data!");
+    }
     let (server, token) = IpcOneShotServer::<IpcSender<BootstrapData>>::new().unwrap();
     let me = if cfg!(target_os = "linux") {
         // will work even if exe is moved
@@ -118,10 +121,8 @@ pub fn spawn<A: Serialize + for<'de> Deserialize<'de>, R: Serialize + for<'de> D
     args_tx.send(args).unwrap();
     // ASLR mitigation
     let init_loc = init as *const () as isize;
-    let fn_offset = f as *const () as isize - init_loc;
-    let wrapper_offset = run_func::<A, R> as *const () as isize - init_loc;
+    let wrapper_offset = run_func::<F, A, R> as *const () as isize - init_loc;
     let bootstrap = BootstrapData {
-        fn_offset,
         wrapper_offset,
         args_receiver: args_rx.to_opaque(),
         return_sender: return_tx.to_opaque(),
@@ -131,14 +132,14 @@ pub fn spawn<A: Serialize + for<'de> Deserialize<'de>, R: Serialize + for<'de> D
 }
 
 unsafe fn run_func<
+    F: FnOnce(A) -> R,
     A: Serialize + for<'de> Deserialize<'de>,
     R: Serialize + for<'de> Deserialize<'de>,
 >(
-    offset: isize,
     recv: OpaqueIpcReceiver,
     sender: OpaqueIpcSender,
 ) {
-    let function: fn(A) -> R = mem::transmute(offset + init as *const () as isize);
+    let function: F = mem::zeroed();
 
     let args = recv.to().recv().unwrap();
     let ret = function(args);
