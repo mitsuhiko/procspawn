@@ -4,6 +4,11 @@ use std::{env, mem, process};
 
 const ARGNAME: &'static str = "--mitosis-content-process-id=";
 
+/// Initialize mitosis
+///
+/// This MUST be called near the top of your main(), before
+/// you do any argument parsing. Any code found before this will also
+/// be executed for each spawned child process.
 pub fn init() {
     let mut args = env::args();
     if args.len() != 2 {
@@ -37,6 +42,18 @@ fn bootstrap_ipc(token: String) {
     process::exit(0);
 }
 
+/// Spawn a new process to run a function with some payload
+///
+/// ```rust,norun
+/// let data = vec![1, 2, 3, 4];
+/// mitosis::spawn(data, |data| {
+///     // This will run in a separate process
+///     println!("Received data {}", data);
+/// })
+/// ```
+///
+/// The function itself cannot capture anything from its environment, but you can
+/// explicitly pass down data through the `args` parameter
 pub fn spawn<A: Serialize + for<'de> Deserialize<'de>>(args: A, f: fn(A)) {
     let (server, token) = IpcOneShotServer::<IpcSender<BootstrapData>>::new().unwrap();
     // XXXManishearth use /proc/self/exe on linux
