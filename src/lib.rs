@@ -101,8 +101,12 @@ pub fn spawn<A: Serialize + for<'de> Deserialize<'de>, R: Serialize + for<'de> D
     f: fn(A) -> R,
 ) -> JoinHandle<R> {
     let (server, token) = IpcOneShotServer::<IpcSender<BootstrapData>>::new().unwrap();
-    // XXXManishearth use /proc/self/exe on linux
-    let me = env::current_exe().unwrap();
+    let me = if cfg!(target_os = "linux") {
+        // will work even if exe is moved
+        "/proc/self/exe".into()
+    } else {
+        env::current_exe().unwrap()
+    };
     let mut child = process::Command::new(me);
     child.arg(format!("{}{}", ARGNAME, token));
     child.spawn().unwrap();
