@@ -15,3 +15,5 @@ jobs:
       run: cargo run --example simple
     - name: Run communicating example
       run: cargo run --example communicating
+    - name: Run join example
+      run: cargo run --example join

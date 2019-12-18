@@ -4,17 +4,20 @@
 //! To use this crate, call `mitosis::init()` at the beginning of your `main()`,
 //! and then anywhere in your program you may call `mitosis::spawn()`:
 //!
-//! ```rust,norun
+//! ```rust,no_run
 //! let data = vec![1, 2, 3, 4];
 //! mitosis::spawn(data, |data| {
 //!     // This will run in a separate process
-//!     println!("Received data {}", data);
-//! })
+//!     println!("Received data {:?}", data);
+//! });
 //!```
 //!
 //! `mitosis::spawn()` can pass arbitrary serializable data, including IPC senders
 //! and receivers from the `ipc-channel` crate, down to the new process.
-use ipc_channel::ipc::{self, IpcOneShotServer, IpcSender, OpaqueIpcReceiver};
+use ipc_channel::ipc::{
+    self, IpcOneShotServer, IpcReceiver, IpcSender, OpaqueIpcReceiver, OpaqueIpcSender,
+};
+use ipc_channel::Error as IpcError;
 use serde::{Deserialize, Serialize};
 use std::{env, mem, process};
 
@@ -25,6 +28,10 @@ const ARGNAME: &'static str = "--mitosis-content-process-id=";
 /// This MUST be called near the top of your main(), before
 /// you do any argument parsing. Any code found before this will also
 /// be executed for each spawned child process.
+///
+/// # Safety
+/// It is not unsafe to omit this function, however `mitosis::spawn`
+/// may lead to unexpected behavior.
 pub fn init() {
     let mut args = env::args();
     if args.len() != 2 {
@@ -42,6 +49,7 @@ struct BootstrapData {
     wrapper_offset: isize,
     fn_offset: isize,
     args_receiver: OpaqueIpcReceiver,
+    return_sender: OpaqueIpcSender,
 }
 
 fn bootstrap_ipc(token: String) {
@@ -52,25 +60,46 @@ fn bootstrap_ipc(token: String) {
     let bootstrap_data = rx.recv().unwrap();
     unsafe {
         let ptr = bootstrap_data.wrapper_offset + init as *const () as isize;
-        let func: fn(isize, OpaqueIpcReceiver) = mem::transmute(ptr);
-        func(bootstrap_data.fn_offset, bootstrap_data.args_receiver);
+        let func: fn(isize, OpaqueIpcReceiver, OpaqueIpcSender) = mem::transmute(ptr);
+        func(
+            bootstrap_data.fn_offset,
+            bootstrap_data.args_receiver,
+            bootstrap_data.return_sender,
+        );
     }
     process::exit(0);
 }
 
 /// Spawn a new process to run a function with some payload
 ///
-/// ```rust,norun
+/// ```rust,no_run
 /// let data = vec![1, 2, 3, 4];
 /// mitosis::spawn(data, |data| {
 ///     // This will run in a separate process
-///     println!("Received data {}", data);
-/// })
+///     println!("Received data {:?}", data);
+/// });
 /// ```
 ///
 /// The function itself cannot capture anything from its environment, but you can
-/// explicitly pass down data through the `args` parameter
-pub fn spawn<A: Serialize + for<'de> Deserialize<'de>>(args: A, f: fn(A)) {
+/// explicitly pass down data through the `args` parameter.
+///
+/// The `JoinHandle` returned by this function can be used to wait for
+/// the child process to finish, and obtain the return value of the function it executed.
+///
+/// ```rust,no_run
+/// let data = vec![1, 1, 2, 3, 3, 5, 4, 1];
+/// let handle = mitosis::spawn(data, |mut data| {
+///     // This will run in a separate process
+///     println!("Received data {:?}", data);
+///     data.dedup();
+/// });
+/// // do some other work
+/// println!("Deduplicated {:?}", handle.join());
+/// ```
+pub fn spawn<A: Serialize + for<'de> Deserialize<'de>, R: Serialize + for<'de> Deserialize<'de>>(
+    args: A,
+    f: fn(A) -> R,
+) -> JoinHandle<R> {
     let (server, token) = IpcOneShotServer::<IpcSender<BootstrapData>>::new().unwrap();
     // XXXManishearth use /proc/self/exe on linux
     let me = env::current_exe().unwrap();
@@ -81,25 +110,46 @@ pub fn spawn<A: Serialize + for<'de> Deserialize<'de>>(args: A, f: fn(A)) {
     let (_rx, tx) = server.accept().unwrap();
 
     let (args_tx, args_rx) = ipc::channel().unwrap();
+    let (return_tx, return_rx) = ipc::channel().unwrap();
     args_tx.send(args).unwrap();
     // ASLR mitigation
     let init_loc = init as *const () as isize;
     let fn_offset = f as *const () as isize - init_loc;
-    let wrapper_offset = run_func::<A> as *const () as isize - init_loc;
+    let wrapper_offset = run_func::<A, R> as *const () as isize - init_loc;
     let bootstrap = BootstrapData {
         fn_offset,
         wrapper_offset,
         args_receiver: args_rx.to_opaque(),
+        return_sender: return_tx.to_opaque(),
     };
     tx.send(bootstrap).unwrap();
+    JoinHandle { recv: return_rx }
 }
 
-unsafe fn run_func<A: Serialize + for<'de> Deserialize<'de>>(
+unsafe fn run_func<
+    A: Serialize + for<'de> Deserialize<'de>,
+    R: Serialize + for<'de> Deserialize<'de>,
+>(
     offset: isize,
     recv: OpaqueIpcReceiver,
+    sender: OpaqueIpcSender,
 ) {
-    let function: fn(A) = mem::transmute(offset + init as *const () as isize);
+    let function: fn(A) -> R = mem::transmute(offset + init as *const () as isize);
 
     let args = recv.to().recv().unwrap();
-    function(args)
+    let ret = function(args);
+    let _ = sender.to().send(ret);
+}
+
+/// This value is returned by `mitosis::spawn` and lets you
+/// wait on the result of the child process' computation
+pub struct JoinHandle<T> {
+    recv: IpcReceiver<T>,
+}
+
+impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
+    /// Wait for the child process to return a result
+    pub fn join(self) -> Result<T, IpcError> {
+        self.recv.recv()
+    }
 }
