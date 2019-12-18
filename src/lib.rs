@@ -10,7 +10,6 @@ pub fn init() {
         return;
     }
     if let Some(arg) = args.nth(1) {
-        println!("found arg {}", arg);
         if arg.starts_with(ARGNAME) {
             bootstrap_ipc(arg[ARGNAME.len()..].into());
         }
@@ -30,14 +29,14 @@ fn bootstrap_ipc(token: String) {
     connection_bootstrap.send(tx).unwrap();
     let bootstrap_data = rx.recv().unwrap();
     unsafe {
-        let ptr = bootstrap_data.offset + init as *const() as isize;
+        let ptr = bootstrap_data.offset + init as *const () as isize;
         let func: fn(OpaqueIpcReceiver) = mem::transmute(ptr);
-        func(bootstrap_data.args_receiver);   
+        func(bootstrap_data.args_receiver);
     }
     process::exit(0);
 }
 
-pub fn spawn<F: FnOnce(A), A: Serialize + for<'de> Deserialize<'de>>(args: A, f: F) {
+pub fn spawn<F: FnOnce(A), A: Serialize + for<'de> Deserialize<'de>>(args: A, _: F) {
     if mem::size_of::<F>() != 0 {
         panic!("mitosis::spawn cannot be called with closures that have captures");
     }
@@ -53,7 +52,7 @@ pub fn spawn<F: FnOnce(A), A: Serialize + for<'de> Deserialize<'de>>(args: A, f:
     let (args_tx, args_rx) = ipc::channel().unwrap();
     args_tx.send(args).unwrap();
     // ASLR mitigation
-    let offset =  run_func::<F, A> as *const () as isize - init as *const() as isize;
+    let offset = run_func::<F, A> as *const () as isize - init as *const () as isize;
     let bootstrap = BootstrapData {
         offset,
         args_receiver: args_rx.to_opaque(),
@@ -61,8 +60,9 @@ pub fn spawn<F: FnOnce(A), A: Serialize + for<'de> Deserialize<'de>>(args: A, f:
     tx.send(bootstrap).unwrap();
 }
 
-unsafe fn run_func<F: FnOnce(A), A: Serialize + for<'de> Deserialize<'de>>(recv: OpaqueIpcReceiver) {
-    println!("running");
+unsafe fn run_func<F: FnOnce(A), A: Serialize + for<'de> Deserialize<'de>>(
+    recv: OpaqueIpcReceiver,
+) {
     let function: F = mem::zeroed();
 
     let args = recv.to().recv().unwrap();
