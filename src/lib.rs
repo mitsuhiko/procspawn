@@ -1,3 +1,19 @@
+//! This crate provides the ability to spawn processes with a function similar
+//! to `thread::spawn`
+//!
+//! To use this crate, call `mitosis::init()` at the beginning of your `main()`,
+//! and then anywhere in your program you may call `mitosis::spawn()`:
+//!
+//! ```rust,norun
+//! let data = vec![1, 2, 3, 4];
+//! mitosis::spawn(data, |data| {
+//!     // This will run in a separate process
+//!     println!("Received data {}", data);
+//! })
+//!```
+//!
+//! `mitosis::spawn()` can pass arbitrary serializable data, including IPC senders
+//! and receivers from the `ipc-channel` crate, down to the new process.
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcSender, OpaqueIpcReceiver};
 use serde::{Deserialize, Serialize};
 use std::{env, mem, process};
