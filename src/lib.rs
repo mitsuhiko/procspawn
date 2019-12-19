@@ -93,7 +93,7 @@ fn bootstrap_ipc(token: String) {
 /// println!("Deduplicated {:?}", handle.join());
 /// ```
 pub fn spawn<
-    F: FnOnce(A) -> R,
+    F: FnOnce(A) -> R + Copy,
     A: Serialize + for<'de> Deserialize<'de>,
     R: Serialize + for<'de> Deserialize<'de>,
 >(
@@ -103,6 +103,7 @@ pub fn spawn<
     if mem::size_of::<F>() != 0 {
         panic!("mitosis::spawn cannot be called with closures that capture data!");
     }
+
     let (server, token) = IpcOneShotServer::<IpcSender<BootstrapData>>::new().unwrap();
     let me = if cfg!(target_os = "linux") {
         // will work even if exe is moved
