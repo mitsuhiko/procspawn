@@ -17,7 +17,7 @@ fn main() {
     mitosis::init();
 
     // some code
-    let some_data = 5
+    let some_data = 5;
     mitosis::spawn(some_data, |data| {
         println!("hello from another process, your data is {}", 5);
     });
