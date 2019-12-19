@@ -4,6 +4,9 @@
 [![Current Version](https://meritbadge.herokuapp.com/mitosis)](https://crates.io/crates/mitosis)
 [![License: MIT/Apache-2.0](https://img.shields.io/crates/l/mitosis.svg)](#license)
 
+> "AWS Lambda for your local machine"
+> 
+>  -- [@jdm](https://github.com/jdm)
 
 WIP (Waiting on https://github.com/servo/ipc-channel/pull/249)
 
