@@ -19,6 +19,7 @@ use ipc_channel::ipc::{
 };
 use ipc_channel::Error as IpcError;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::{env, mem, process};
 
 const ARGNAME: &'static str = "--mitosis-content-process-id=";
@@ -107,7 +108,13 @@ pub fn spawn<
     let (server, token) = IpcOneShotServer::<IpcSender<BootstrapData>>::new().unwrap();
     let me = if cfg!(target_os = "linux") {
         // will work even if exe is moved
-        "/proc/self/exe".into()
+        let path: PathBuf = "/proc/self/exe".into();
+        if path.is_file() {
+            path
+        } else {
+            // might not exist, e.g. on chroot
+            env::current_exe().unwrap()
+        }
     } else {
         env::current_exe().unwrap()
     };
