@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{env, mem, process};
 
-const ARGNAME: &'static str = "--mitosis-content-process-id=";
+const ARGNAME: &str = "--mitosis-content-process-id=";
 
 /// Initialize mitosis
 ///

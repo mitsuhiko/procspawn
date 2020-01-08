@@ -1,6 +1,7 @@
 use mitosis;
 
-use std::thread::sleep_ms;
+use std::thread::sleep;
+use std::time::Duration;
 
 fn main() {
     mitosis::init();
@@ -9,5 +10,5 @@ fn main() {
         println!("{:?} {:?}", a, b);
     });
 
-    sleep_ms(2000);
+    sleep(Duration::from_secs(2));
 }
