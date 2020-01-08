@@ -7,7 +7,7 @@ fn main() {
     let thirty = mitosis::spawn(30, fibonacci);
     assert_eq!(five.join().unwrap(), 5);
     assert_eq!(ten.join().unwrap(), 55);
-    assert_eq!(thirty.join().unwrap(), 832040);
+    assert_eq!(thirty.join().unwrap(), 832_040);
     println!("Successfully calculated fibonacci values!");
 }
 

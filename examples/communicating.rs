@@ -12,7 +12,7 @@ fn main() {
     let thirty = fibonacci_par(30);
     assert_eq!(five.recv().unwrap(), 5);
     assert_eq!(ten.recv().unwrap(), 55);
-    assert_eq!(thirty.recv().unwrap(), 832040);
+    assert_eq!(thirty.recv().unwrap(), 832_040);
     println!("Successfully calculated fibonacci values!");
 }
 

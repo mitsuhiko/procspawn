@@ -22,27 +22,27 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{env, mem, process};
 
-const ARGNAME: &'static str = "--mitosis-content-process-id=";
+const ENV_NAME: &str = "MITOSIS_CONTENT_PROCESS_ID";
 
 /// Initialize mitosis
 ///
 /// This MUST be called near the top of your main(), before
-/// you do any argument parsing. Any code found before this will also
+/// you do any environment variable processing. Any code found before this will also
 /// be executed for each spawned child process.
 ///
 /// # Safety
 /// It is not unsafe to omit this function, however `mitosis::spawn`
 /// may lead to unexpected behavior.
 pub fn init() {
-    let mut args = env::args();
-    if args.len() != 2 {
+    if env::args().len() != 1 {
         return;
     }
-    if let Some(arg) = args.nth(1) {
-        if arg.starts_with(ARGNAME) {
-            bootstrap_ipc(arg[ARGNAME.len()..].into());
-        }
+    if let Ok(token) = std::env::var(ENV_NAME) {
+        bootstrap_ipc(token);
     }
+    // Clear environment variable so processes spawned from the `spawn` closure can
+    // themselves be using `mitosis`
+    std::env::remove_var(ENV_NAME);
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -119,7 +119,7 @@ pub fn spawn<
         env::current_exe().unwrap()
     };
     let mut child = process::Command::new(me);
-    child.arg(format!("{}{}", ARGNAME, token));
+    child.env(ENV_NAME, token);
     child.spawn().unwrap();
 
     let (_rx, tx) = server.accept().unwrap();
