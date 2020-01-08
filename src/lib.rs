@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
+use std::sync::{Mutex, RwLock};
 use std::{env, mem, process};
 
 mod builder;
@@ -40,15 +41,50 @@ const ENV_NAME: &str = "MITOSIS_CONTENT_PROCESS_ID";
 /// It is not unsafe to omit this function, however `mitosis::spawn`
 /// may lead to unexpected behavior.
 pub fn init() {
-    if env::args().len() != 1 {
-        return;
-    }
-    if let Ok(token) = std::env::var(ENV_NAME) {
+    if let Ok(token) = env::var(ENV_NAME) {
         bootstrap_ipc(token);
     }
     // Clear environment variable so processes spawned from the `spawn` closure can
     // themselves be using `mitosis`
     std::env::remove_var(ENV_NAME);
+}
+
+lazy_static::lazy_static! {
+    // This is necessary because it's not possible to downgrade a `RwLockWriteGuard` to
+    // a `RwLockReadGuard` without unlocking. So if we write to make sure that tests using
+    // `init_test` do not interfere with each other (e.g. by overwriting the `TEST_HOOK`),
+    // we need to block for the entire execution of the test.
+    static ref PROTECT_WRITING_TO_TEST_HOOK: Mutex<()> = Mutex::new(());
+    static ref TEST_HOOK: RwLock<Option<&'static str>> = RwLock::new(None);
+}
+
+/// Initialize `mitosis` within a `#[test]`. You need to specify the name of the
+/// test (including its entire module path), because this calls the test binary
+/// with the test's name as the argument, just like `cargo test your::test::name`
+/// does. Technically you can specify an test name that runs `init`, so for simplicity
+/// you may want to include a `#[test] fn mitosis() { init() }` in your test suite and
+/// just use `"mitosis"` as the `init_test` argument everywhere.
+///
+/// The closure argument is where you run code that may use `mitosis::spawn`. Any code
+/// using `mitosis::spawn` outside the closure will cause unexpected behaviour.
+///
+/// Note that using `mitosis` within tests is slow. Whenever you call `spawn`
+/// the entire test harness is executed before actually running your closure.
+///
+/// # Safety
+/// It is not unsafe to omit this function, or specify a wrong test name,
+/// however `mitosis::spawn` may lead to unexpected behavior.
+pub fn init_test<R>(name: &'static str, f: impl FnOnce() -> R) -> R {
+    init();
+    // Read the documentation on these globals for an explanation of the
+    // multi-level locking mechanism. Doing this wrong does not affect safety,
+    // but will cause tests to interfere with each other if cargo is run with
+    // --test-threads > 1 (the default is the number of cores).
+    let _guard = PROTECT_WRITING_TO_TEST_HOOK.lock();
+    *TEST_HOOK.write().unwrap() = Some(name);
+    let ret = f();
+    *TEST_HOOK.write().unwrap() = None;
+    ret
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -145,6 +181,10 @@ impl Builder {
         );
         child.envs(self.envs.into_iter());
         child.env(ENV_NAME, token);
+        if let Some(test_name) = *TEST_HOOK.read().unwrap() {
+            child.arg(test_name);
+            child.arg("--exact");
+        }
         if let Some(stdin) = self.stdin {
             child.stdin(stdin);
         }

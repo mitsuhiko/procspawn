@@ -13,3 +13,4 @@ description = "(WIP) Crate providing the ability to spawn processes with custom 
 [dependencies]
 ipc-channel = "0.13.0"
 serde = { version = "1.0.104", features = ["derive"] }
+lazy_static = "1.4.0"
