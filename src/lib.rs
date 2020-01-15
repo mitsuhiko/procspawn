@@ -120,7 +120,7 @@ pub fn spawn<
     };
     let mut child = process::Command::new(me);
     child.env(ENV_NAME, token);
-    child.spawn().unwrap();
+    let process = child.spawn().unwrap();
 
     let (_rx, tx) = server.accept().unwrap();
 
@@ -136,7 +136,10 @@ pub fn spawn<
         return_sender: return_tx.to_opaque(),
     };
     tx.send(bootstrap).unwrap();
-    JoinHandle { recv: return_rx }
+    JoinHandle {
+        recv: return_rx,
+        process,
+    }
 }
 
 unsafe fn run_func<
@@ -158,11 +161,17 @@ unsafe fn run_func<
 /// wait on the result of the child process' computation
 pub struct JoinHandle<T> {
     recv: IpcReceiver<T>,
+    process: process::Child,
 }
 
 impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
     /// Wait for the child process to return a result
     pub fn join(self) -> Result<T, IpcError> {
         self.recv.recv()
+    }
+
+    /// Kill the child process.
+    pub fn kill(mut self) -> std::io::Result<()> {
+        self.process.kill()
     }
 }
