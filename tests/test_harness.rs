@@ -1,11 +1,11 @@
-use mitosis::{init, init_test, spawn};
+use mitosis::{init_test, spawn};
 
 #[test]
 fn normal_test() {}
 
 #[test]
 fn mitosis() {
-    init();
+    init_test();
 }
 
 #[test]

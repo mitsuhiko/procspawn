@@ -55,7 +55,7 @@ static IN_TEST_ENV: AtomicBool = AtomicBool::new(false);
 /// ```rust
 /// #[test]
 /// fn mitosis() {
-///     init()
+///     init_test()
 /// }
 /// ```
 /// in your crate root, because `spawn` calls the test binary
@@ -64,12 +64,16 @@ static IN_TEST_ENV: AtomicBool = AtomicBool::new(false);
 /// Note that using `mitosis` within tests is slow. Whenever you call `spawn`
 /// the entire test harness is executed before actually running your closure.
 ///
+/// Note that if you use `init` instead of `init_test` inside the `mitosis` test,
+/// then you can't do nested calls to `mitosis::spawn` inside tests
+///
 /// # Safety
 /// It is not unsafe to omit this function,
 /// however `mitosis::spawn` may lead to unexpected behavior.
 pub fn init_test() {
-    init();
+    // Set the variable before running `init` so that nested `spawn` calls work
     IN_TEST_ENV.store(true, Ordering::Relaxed);
+    init();
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -167,8 +171,14 @@ impl Builder {
         child.envs(self.envs.into_iter());
         child.env(ENV_NAME, token);
         if IN_TEST_ENV.load(Ordering::Relaxed) {
+            // we expect the user to have supplied a `#[test] fn mitosis() { mitosis::init_test() }
             child.arg("mitosis");
+            // makes sure we don't run any other tests
             child.arg("--exact");
+            // reduces boilerplate CPU time
+            child.arg("--test-threads=1");
+            // reduces stderr noise
+            child.arg("-q");
         }
         if let Some(stdin) = self.stdin {
             child.stdin(stdin);
