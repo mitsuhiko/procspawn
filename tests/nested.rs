@@ -5,7 +5,7 @@ fn mitosis() {
 
 #[test]
 fn nested() {
-    mitosis::init();
+    mitosis::init_test();
     let five = mitosis::spawn(5, |x| {
         println!("1");
         let x = mitosis::spawn(x, |y| {
