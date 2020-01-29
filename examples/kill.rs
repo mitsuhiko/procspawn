@@ -1,5 +1,6 @@
 use mitosis;
 
+#[allow(clippy::empty_loop)]
 fn main() {
     mitosis::init();
 
