@@ -42,11 +42,11 @@ const ENV_NAME: &str = "MITOSIS_CONTENT_PROCESS_ID";
 /// may lead to unexpected behavior.
 pub fn init() {
     if let Ok(token) = env::var(ENV_NAME) {
+        // Clear environment variable so processes spawned from the `spawn` closure can
+        // themselves be using `mitosis`
+        std::env::remove_var(ENV_NAME);
         bootstrap_ipc(token);
     }
-    // Clear environment variable so processes spawned from the `spawn` closure can
-    // themselves be using `mitosis`
-    std::env::remove_var(ENV_NAME);
 }
 
 static IN_TEST_ENV: AtomicBool = AtomicBool::new(false);
