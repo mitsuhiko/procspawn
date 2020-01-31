@@ -8,8 +8,6 @@
 > 
 >  -- [@jdm](https://github.com/jdm)
 
-WIP (Waiting on https://github.com/servo/ipc-channel/pull/249)
-
 This crate provides `mitosis::spawn()`, which is similar to `thread::spawn()` but will spawn a new process instead.
 
 
