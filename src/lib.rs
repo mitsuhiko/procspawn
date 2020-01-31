@@ -19,8 +19,14 @@ use ipc_channel::ipc::{
 };
 use ipc_channel::Error as IpcError;
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
 use std::path::PathBuf;
+use std::process::{ChildStderr, ChildStdin, ChildStdout};
 use std::{env, mem, process};
+
+mod builder;
+
+pub use builder::*;
 
 const ENV_NAME: &str = "MITOSIS_CONTENT_PROCESS_ID";
 
@@ -99,46 +105,75 @@ pub fn spawn<
     R: Serialize + for<'de> Deserialize<'de>,
 >(
     args: A,
-    _: F,
+    f: F,
 ) -> JoinHandle<R> {
-    if mem::size_of::<F>() != 0 {
-        panic!("mitosis::spawn cannot be called with closures that capture data!");
-    }
+    Builder::new().spawn(args, f)
+}
 
-    let (server, token) = IpcOneShotServer::<IpcSender<BootstrapData>>::new().unwrap();
-    let me = if cfg!(target_os = "linux") {
-        // will work even if exe is moved
-        let path: PathBuf = "/proc/self/exe".into();
-        if path.is_file() {
-            path
-        } else {
-            // might not exist, e.g. on chroot
-            env::current_exe().unwrap()
+impl Builder {
+    pub fn spawn<
+        F: FnOnce(A) -> R + Copy,
+        A: Serialize + for<'de> Deserialize<'de>,
+        R: Serialize + for<'de> Deserialize<'de>,
+    >(
+        self,
+        args: A,
+        _: F,
+    ) -> JoinHandle<R> {
+        if mem::size_of::<F>() != 0 {
+            panic!("mitosis::spawn cannot be called with closures that capture data!");
         }
-    } else {
-        env::current_exe().unwrap()
-    };
-    let mut child = process::Command::new(me);
-    child.env(ENV_NAME, token);
-    let process = child.spawn().unwrap();
 
-    let (_rx, tx) = server.accept().unwrap();
+        let (server, token) = IpcOneShotServer::<IpcSender<BootstrapData>>::new().unwrap();
+        let me = if cfg!(target_os = "linux") {
+            // will work even if exe is moved
+            let path: PathBuf = "/proc/self/exe".into();
+            if path.is_file() {
+                path
+            } else {
+                // might not exist, e.g. on chroot
+                env::current_exe().unwrap()
+            }
+        } else {
+            env::current_exe().unwrap()
+        };
+        let mut child = process::Command::new(me);
+        assert!(
+            !self.envs.contains_key(OsStr::new(ENV_NAME)),
+            "cannot spawn mitosis process with `{}` still set",
+            ENV_NAME
+        );
+        child.envs(self.envs.into_iter());
+        child.env(ENV_NAME, token);
+        if let Some(stdin) = self.stdin {
+            child.stdin(stdin);
+        }
+        if let Some(stdout) = self.stdout {
+            child.stdout(stdout);
+        }
+        if let Some(stderr) = self.stderr {
+            child.stderr(stderr);
+        }
+        let process = child.spawn().unwrap();
 
-    let (args_tx, args_rx) = ipc::channel().unwrap();
-    let (return_tx, return_rx) = ipc::channel().unwrap();
-    args_tx.send(args).unwrap();
-    // ASLR mitigation
-    let init_loc = init as *const () as isize;
-    let wrapper_offset = run_func::<F, A, R> as *const () as isize - init_loc;
-    let bootstrap = BootstrapData {
-        wrapper_offset,
-        args_receiver: args_rx.to_opaque(),
-        return_sender: return_tx.to_opaque(),
-    };
-    tx.send(bootstrap).unwrap();
-    JoinHandle {
-        recv: return_rx,
-        process,
+        let (_rx, tx) = server.accept().unwrap();
+
+        let (args_tx, args_rx) = ipc::channel().unwrap();
+        let (return_tx, return_rx) = ipc::channel().unwrap();
+        args_tx.send(args).unwrap();
+        // ASLR mitigation
+        let init_loc = init as *const () as isize;
+        let wrapper_offset = run_func::<F, A, R> as *const () as isize - init_loc;
+        let bootstrap = BootstrapData {
+            wrapper_offset,
+            args_receiver: args_rx.to_opaque(),
+            return_sender: return_tx.to_opaque(),
+        };
+        tx.send(bootstrap).unwrap();
+        JoinHandle {
+            recv: return_rx,
+            process,
+        }
     }
 }
 
@@ -173,5 +208,20 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
     /// Kill the child process.
     pub fn kill(mut self) -> std::io::Result<()> {
         self.process.kill()
+    }
+
+    /// Fetch the `stdin` handle if it has been captured
+    pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
+        self.process.stdin.as_mut()
+    }
+
+    /// Fetch the `stdout` handle if it has been captured
+    pub fn stdout(&mut self) -> Option<&mut ChildStdout> {
+        self.process.stdout.as_mut()
+    }
+
+    /// Fetch the `stderr` handle if it has been captured
+    pub fn stderr(&mut self) -> Option<&mut ChildStderr> {
+        self.process.stderr.as_mut()
     }
 }
