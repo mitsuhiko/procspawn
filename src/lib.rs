@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, mem, process};
 
 mod builder;
@@ -40,15 +41,39 @@ const ENV_NAME: &str = "MITOSIS_CONTENT_PROCESS_ID";
 /// It is not unsafe to omit this function, however `mitosis::spawn`
 /// may lead to unexpected behavior.
 pub fn init() {
-    if env::args().len() != 1 {
-        return;
-    }
-    if let Ok(token) = std::env::var(ENV_NAME) {
+    if let Ok(token) = env::var(ENV_NAME) {
+        // Clear environment variable so processes spawned from the `spawn` closure can
+        // themselves be using `mitosis`
+        std::env::remove_var(ENV_NAME);
         bootstrap_ipc(token);
     }
-    // Clear environment variable so processes spawned from the `spawn` closure can
-    // themselves be using `mitosis`
-    std::env::remove_var(ENV_NAME);
+}
+
+static IN_TEST_ENV: AtomicBool = AtomicBool::new(false);
+
+/// Initialize `mitosis` within a `#[test]`. You need to also have
+/// ```rust
+/// #[test]
+/// fn mitosis() {
+///     init_test()
+/// }
+/// ```
+/// in your crate root, because `spawn` calls the test binary
+/// with `--exact mitosis`
+///
+/// Note that using `mitosis` within tests is slow. Whenever you call `spawn`
+/// the entire test harness is executed before actually running your closure.
+///
+/// Note that if you use `init` instead of `init_test` inside the `mitosis` test,
+/// then you can't do nested calls to `mitosis::spawn` inside tests
+///
+/// # Safety
+/// It is not unsafe to omit this function,
+/// however `mitosis::spawn` may lead to unexpected behavior.
+pub fn init_test() {
+    // Set the variable before running `init` so that nested `spawn` calls work
+    IN_TEST_ENV.store(true, Ordering::Relaxed);
+    init();
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -145,6 +170,16 @@ impl Builder {
         );
         child.envs(self.envs.into_iter());
         child.env(ENV_NAME, token);
+        if IN_TEST_ENV.load(Ordering::Relaxed) {
+            // we expect the user to have supplied a `#[test] fn mitosis() { mitosis::init_test() }
+            child.arg("mitosis");
+            // makes sure we don't run any other tests
+            child.arg("--exact");
+            // reduces boilerplate CPU time
+            child.arg("--test-threads=1");
+            // reduces stderr noise
+            child.arg("-q");
+        }
         if let Some(stdin) = self.stdin {
             child.stdin(stdin);
         }
