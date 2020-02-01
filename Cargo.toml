@@ -5,7 +5,7 @@ authors = ["Manish Goregaokar <manishsmail@gmail.com>"]
 edition = "2018"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/Manishearth/mitosis"
-description = "(WIP) Crate providing the ability to spawn processes with custom closures"
+description = "Crate providing the ability to spawn processes with custom closures"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
