@@ -3,7 +3,7 @@
 //!
 //! ```rust,no_run
 //! procspawn::init();
-//! 
+//!
 //! let data = vec![1, 2, 3, 4];
 //! let handle = procspawn::spawn(data, |data| {
 //!     println!("Received data {:?}", &data);

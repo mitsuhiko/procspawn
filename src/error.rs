@@ -65,7 +65,7 @@ impl fmt::Display for Panic {
 }
 
 /// Encapsulates errors of the procspawn crate.
-/// 
+///
 /// In particular it gives access to remotely captured panics.
 #[derive(Debug)]
 pub struct SpawnError {
