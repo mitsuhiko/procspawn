@@ -4,7 +4,7 @@ use std::panic;
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use ipc_channel::ipc::{self, IpcSender, OpaqueIpcReceiver, OpaqueIpcSender};
+use ipc_channel::ipc::{self, IpcReceiver, IpcSender, OpaqueIpcReceiver, OpaqueIpcSender};
 use serde::{Deserialize, Serialize};
 
 use crate::panic::{init_panic_hook, reset_panic_info, take_panic, BacktraceCapture};
@@ -122,36 +122,57 @@ pub fn assert_initialized() {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct BootstrapData {
-    pub wrapper_offset: isize,
-    pub args_receiver: OpaqueIpcReceiver,
-    pub return_sender: OpaqueIpcSender,
-}
-
 fn bootstrap_ipc(token: String, config: &ProcConfig) {
     if config.panic_handling {
         init_panic_hook(config.backtrace_capture());
     }
 
-    let connection_bootstrap: IpcSender<IpcSender<BootstrapData>> =
+    let connection_bootstrap: IpcSender<IpcSender<MarshalledCall>> =
         IpcSender::connect(token).unwrap();
     let (tx, rx) = ipc::channel().unwrap();
     connection_bootstrap.send(tx).unwrap();
-    let bootstrap_data = rx.recv().unwrap();
-    unsafe {
-        let ptr = bootstrap_data.wrapper_offset + init as *const () as isize;
-        let func: fn(OpaqueIpcReceiver, OpaqueIpcSender, &ProcConfig) = mem::transmute(ptr);
-        func(
-            bootstrap_data.args_receiver,
-            bootstrap_data.return_sender,
-            config,
-        );
-    }
+    let marshalled_call = rx.recv().unwrap();
+    marshalled_call.call(config.panic_handling);
     process::exit(0);
 }
 
-pub fn get_wrapper_offset<F, A, R>() -> isize
+/// Marshals a call across process boundaries.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MarshalledCall {
+    pub wrapper_offset: isize,
+    pub args_receiver: OpaqueIpcReceiver,
+    pub return_sender: OpaqueIpcSender,
+}
+
+impl MarshalledCall {
+    /// Marshalls the call.
+    pub fn marshal<F, A, R>(
+        args_receiver: IpcReceiver<A>,
+        return_sender: IpcSender<R>,
+    ) -> MarshalledCall
+    where
+        F: FnOnce(A) -> R,
+        A: Serialize + for<'de> Deserialize<'de>,
+        R: Serialize + for<'de> Deserialize<'de>,
+    {
+        MarshalledCall {
+            wrapper_offset: get_wrapper_offset::<F, A, R>(),
+            args_receiver: args_receiver.to_opaque(),
+            return_sender: return_sender.to_opaque(),
+        }
+    }
+
+    /// Unmarshals and performs the call.
+    fn call(self, panic_handling: bool) {
+        unsafe {
+            let ptr = self.wrapper_offset + init as *const () as isize;
+            let func: fn(OpaqueIpcReceiver, OpaqueIpcSender, bool) = mem::transmute(ptr);
+            func(self.args_receiver, self.return_sender, panic_handling);
+        }
+    }
+}
+
+fn get_wrapper_offset<F, A, R>() -> isize
 where
     F: FnOnce(A) -> R,
     A: Serialize + for<'de> Deserialize<'de>,
@@ -161,7 +182,7 @@ where
     run_func::<F, A, R> as *const () as isize - init_loc
 }
 
-unsafe fn run_func<F, A, R>(recv: OpaqueIpcReceiver, sender: OpaqueIpcSender, config: &ProcConfig)
+unsafe fn run_func<F, A, R>(recv: OpaqueIpcReceiver, sender: OpaqueIpcSender, panic_handling: bool)
 where
     F: FnOnce(A) -> R,
     A: Serialize + for<'de> Deserialize<'de>,
@@ -169,7 +190,7 @@ where
 {
     let function: F = mem::zeroed();
     let args = recv.to().recv().unwrap();
-    let rv = if config.panic_handling {
+    let rv = if panic_handling {
         reset_panic_info();
         match panic::catch_unwind(panic::AssertUnwindSafe(|| function(args))) {
             Ok(rv) => Ok(rv),

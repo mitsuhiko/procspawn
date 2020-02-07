@@ -1,15 +1,14 @@
 use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
 use std::{env, mem, process};
 
-use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
+use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender, OpaqueIpcReceiver};
 use serde::{Deserialize, Serialize};
 
-use crate::core::{assert_initialized, get_wrapper_offset, BootstrapData, ENV_NAME};
+use crate::core::{assert_initialized, MarshalledCall, ENV_NAME};
 use crate::error::{Panic, SpawnError};
 
 /// Process factory, which can be used in order to configure the properties
@@ -113,7 +112,10 @@ impl Builder {
         func: F,
     ) -> JoinHandle<R> {
         assert_initialized();
-        JoinHandle(self.spawn_helper(args, func))
+        JoinHandle {
+            inner: self.spawn_helper(args, func),
+            _marker: Default::default(),
+        }
     }
 
     fn spawn_helper<
@@ -124,12 +126,12 @@ impl Builder {
         self,
         args: A,
         _: F,
-    ) -> Result<JoinHandleInner<R>, SpawnError> {
+    ) -> Result<JoinHandleInner, SpawnError> {
         if mem::size_of::<F>() != 0 {
             panic!("procspawn cannot be called with closures that capture data!");
         }
 
-        let (server, token) = IpcOneShotServer::<IpcSender<BootstrapData>>::new()?;
+        let (server, token) = IpcOneShotServer::<IpcSender<MarshalledCall>>::new()?;
         let me = if cfg!(target_os = "linux") {
             // will work even if exe is moved
             let path: PathBuf = "/proc/self/exe".into();
@@ -159,17 +161,12 @@ impl Builder {
         let (_rx, tx) = server.accept()?;
 
         let (args_tx, args_rx) = ipc::channel()?;
-        let (return_tx, return_rx) = ipc::channel()?;
+        let (return_tx, return_rx) = ipc::channel::<R>()?;
         args_tx.send(args)?;
 
-        let bootstrap = BootstrapData {
-            wrapper_offset: get_wrapper_offset::<F, A, R>(),
-            args_receiver: args_rx.to_opaque(),
-            return_sender: return_tx.to_opaque(),
-        };
-        tx.send(bootstrap)?;
+        tx.send(MarshalledCall::marshal::<F, A, R>(args_rx, return_tx))?;
         Ok(JoinHandleInner {
-            recv: return_rx,
+            recv: return_rx.to_opaque(),
             process,
         })
     }
@@ -179,20 +176,23 @@ impl Builder {
 ///
 /// The join handle can be used to join a process but also provides the
 /// ability to kill it.
-pub struct JoinHandle<T>(Result<JoinHandleInner<T>, SpawnError>);
+pub struct JoinHandle<T> {
+    pub(crate) inner: Result<JoinHandleInner, SpawnError>,
+    _marker: std::marker::PhantomData<T>,
+}
 
-pub struct JoinHandleInner<T> {
-    recv: IpcReceiver<Result<T, Panic>>,
-    process: process::Child,
+pub struct JoinHandleInner {
+    pub(crate) recv: OpaqueIpcReceiver,
+    pub(crate) process: process::Child,
 }
 
 impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
     /// Wait for the child process to return a result.
     pub fn join(self) -> Result<T, SpawnError> {
-        match self.0 {
+        match self.inner {
             Ok(inner) => {
-                let rv: Result<T, Panic> = inner.recv.recv()?;
-                match rv {
+                let recv: IpcReceiver<Result<T, Panic>> = inner.recv.to();
+                match recv.recv()? {
                     Ok(rv) => Ok(rv),
                     Err(panic) => Err(panic.into()),
                 }
@@ -203,33 +203,39 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
 
     /// Kill the child process.
     pub fn kill(self) -> std::io::Result<()> {
-        match self.0 {
-            Ok(mut inner) => inner.process.kill().map_err(Into::into),
-            Err(_) => Ok(()),
+        match self.inner {
+            Ok(JoinHandleInner { mut process, .. }) => process.kill().map_err(Into::into),
+            _ => Ok(()),
         }
     }
 
     /// Fetch the `stdin` handle if it has been captured
     pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
-        match self.0 {
-            Ok(ref mut inner) => inner.process.stdin.as_mut(),
-            Err(_) => None,
+        match self.inner {
+            Ok(JoinHandleInner {
+                ref mut process, ..
+            }) => process.stdin.as_mut(),
+            _ => None,
         }
     }
 
     /// Fetch the `stdout` handle if it has been captured
     pub fn stdout(&mut self) -> Option<&mut ChildStdout> {
-        match self.0 {
-            Ok(ref mut inner) => inner.process.stdout.as_mut(),
-            Err(_) => None,
+        match self.inner {
+            Ok(JoinHandleInner {
+                ref mut process, ..
+            }) => process.stdout.as_mut(),
+            _ => None,
         }
     }
 
     /// Fetch the `stderr` handle if it has been captured
     pub fn stderr(&mut self) -> Option<&mut ChildStderr> {
-        match self.0 {
-            Ok(ref mut inner) => inner.process.stderr.as_mut(),
-            Err(_) => None,
+        match self.inner {
+            Ok(JoinHandleInner {
+                ref mut process, ..
+            }) => process.stderr.as_mut(),
+            _ => None,
         }
     }
 }
