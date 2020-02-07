@@ -6,5 +6,13 @@ fn main() {
     let handle = spawn((), |()| {
         panic!("Whatever!");
     });
-    handle.join().unwrap();
+
+    match handle.join() {
+        Ok(()) => unreachable!(),
+        Err(err) => {
+            let panic = err.panic_info().expect("got a non panic error");
+            println!("process panicked with {}", panic.message());
+            println!("{:#?}", panic);
+        }
+    }
 }

@@ -37,6 +37,10 @@ checkall:
 .PHONY: checkall
 
 testall:
-	cargo test --all-features --all
 	cargo test --no-default-features --all
+	cargo test --all-features --all
+	cargo run --all-features --example panic
+	cargo run --all-features --example simple
+	cargo run --all-features --example join
+	cargo run --all-features --example kill
 .PHONY: testall

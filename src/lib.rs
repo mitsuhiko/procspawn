@@ -23,9 +23,13 @@
 //! send backtraces across the process boundaries.
 //!
 //! Additionally the desire is to extend `procspawn` to support pooling of
-//! spawned procsses for reuse.
+//! spawned processes for reuse.
 //!
-//! This crate is a fork of `mitosis`.
+//! ## Features
+//!
+//! * `backtrace`: this feature is enabled by default.  When in use then
+//!   backtraces are captured with the `backtrace-rs` crate and serialized
+//!   across process boundaries.
 
 use serde::{Deserialize, Serialize};
 
