@@ -205,6 +205,7 @@ fn init_panic_hook(config: &ProcConfig) {
         }
         #[cfg(not(feature = "backtrace"))]
         {
+            let _config = config;
             BacktraceCapture::No
         }
     };

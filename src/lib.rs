@@ -15,6 +15,16 @@
 //! `spawn()` can pass arbitrary serializable data, including IPC senders
 //! and receivers from the `ipc-channel` crate, down to the new process.
 //!
+//! ## Differences to Mitosis
+//!
+//! This crate is a fork of the `mitosis` crate with various differences in
+//! how they operate.  The most obvious one is that `procspawn` is very
+//! opinionated about error handling and will automatically capture and
+//! send backtraces across the process boundaries.
+//!
+//! Additionally the desire is to extend `procspawn` to support pooling of
+//! spawned procsses for reuse.
+//!
 //! This crate is a fork of `mitosis`.
 
 use serde::{Deserialize, Serialize};

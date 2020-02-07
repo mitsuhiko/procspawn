@@ -9,5 +9,5 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: Run rustfmt
-      run: make style
+    - name: Run clippy
+      run: make lint
