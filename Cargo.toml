@@ -1,16 +1,14 @@
 [package]
-name = "mitosis"
+name = "procspawn"
 version = "0.1.0"
-authors = ["Manish Goregaokar <manishsmail@gmail.com>"]
+authors = ["Armin Ronacher <armin.ronacher@active-4.com>", "Manish Goregaokar <manishsmail@gmail.com>"]
 edition = "2018"
 license = "MIT/Apache-2.0"
-repository = "https://github.com/Manishearth/mitosis"
-description = "Crate providing the ability to spawn processes with custom closures"
 
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["backtrace"]
 
 [dependencies]
 ipc-channel = "0.13.0"
 serde = { version = "1.0.104", features = ["derive"] }
-lazy_static = "1.4.0"
+backtrace = { version = "0.3.43", optional = true, features = ["serde"] }

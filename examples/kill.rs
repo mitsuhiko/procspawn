@@ -1,10 +1,8 @@
-use mitosis;
+use procspawn::{self, spawn};
 
 #[allow(clippy::empty_loop)]
 fn main() {
-    mitosis::init();
-
-    let handle = mitosis::spawn((), |()| loop {});
-
+    procspawn::init();
+    let handle = spawn((), |()| loop {});
     handle.kill().unwrap();
 }

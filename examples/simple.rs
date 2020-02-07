@@ -1,14 +1,12 @@
-use mitosis;
-
-use std::thread::sleep;
-use std::time::Duration;
+use procspawn::{self, spawn};
 
 fn main() {
-    mitosis::init();
+    procspawn::init();
 
-    mitosis::spawn((1, 2), |(a, b)| {
-        println!("{:?} {:?}", a, b);
+    let handle = spawn((1, 2), |(a, b)| {
+        println!("in process: {:?} {:?}", a, b);
+        a + b
     });
 
-    sleep(Duration::from_secs(2));
+    println!("result: {}", handle.join().unwrap());
 }

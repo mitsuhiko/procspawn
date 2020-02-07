@@ -1,10 +1,11 @@
-use mitosis;
+use procspawn::{self, spawn};
 
 fn main() {
-    mitosis::init();
-    let five = mitosis::spawn(5, fibonacci);
-    let ten = mitosis::spawn(10, fibonacci);
-    let thirty = mitosis::spawn(30, fibonacci);
+    procspawn::init();
+
+    let five = spawn(5, fibonacci);
+    let ten = spawn(10, fibonacci);
+    let thirty = spawn(30, fibonacci);
     assert_eq!(five.join().unwrap(), 5);
     assert_eq!(ten.join().unwrap(), 55);
     assert_eq!(thirty.join().unwrap(), 832_040);
