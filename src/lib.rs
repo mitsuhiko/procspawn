@@ -35,6 +35,7 @@ use serde::{Deserialize, Serialize};
 
 mod core;
 mod error;
+mod panic;
 mod proc;
 
 pub use self::core::{init, ProcConfig};

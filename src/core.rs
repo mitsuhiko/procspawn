@@ -1,5 +1,3 @@
-use std::any::Any;
-use std::cell::RefCell;
 use std::env;
 use std::mem;
 use std::panic;
@@ -9,14 +7,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use ipc_channel::ipc::{self, IpcSender, OpaqueIpcReceiver, OpaqueIpcSender};
 use serde::{Deserialize, Serialize};
 
-use crate::error::Panic;
+use crate::panic::{init_panic_hook, reset_panic_info, take_panic, BacktraceCapture};
 
 pub const ENV_NAME: &str = "__PROCSPAWN_CONTENT_PROCESS_ID";
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
-
-thread_local! {
-    static PANIC_INFO: RefCell<Option<Panic>> = RefCell::new(None);
-}
 
 /// Can be used to configure the process.
 pub struct ProcConfig {
@@ -93,6 +87,21 @@ impl ProcConfig {
             bootstrap_ipc(token, &self);
         }
     }
+
+    fn backtrace_capture(&self) -> BacktraceCapture {
+        #[cfg(feature = "backtrace")]
+        {
+            match (self.capture_backtraces, self.resolve_backtraces) {
+                (false, _) => BacktraceCapture::No,
+                (true, true) => BacktraceCapture::Resolved,
+                (true, false) => BacktraceCapture::Unresolved,
+            }
+        }
+        #[cfg(not(feature = "backtrace"))]
+        {
+            BacktraceCapture::No
+        }
+    }
 }
 
 /// Initializes procspawn.
@@ -122,7 +131,7 @@ pub struct BootstrapData {
 
 fn bootstrap_ipc(token: String, config: &ProcConfig) {
     if config.panic_handling {
-        init_panic_hook(config);
+        init_panic_hook(config.backtrace_capture());
     }
 
     let connection_bootstrap: IpcSender<IpcSender<BootstrapData>> =
@@ -150,79 +159,6 @@ where
 {
     let init_loc = init as *const () as isize;
     run_func::<F, A, R> as *const () as isize - init_loc
-}
-
-fn reset_panic_info() {
-    PANIC_INFO.with(|pi| {
-        *pi.borrow_mut() = None;
-    });
-}
-
-fn take_panic(panic: &(dyn Any + Send + 'static)) -> Panic {
-    PANIC_INFO
-        .with(|pi| pi.borrow_mut().take())
-        .unwrap_or_else(move || serialize_panic(panic))
-}
-
-#[derive(Copy, Clone)]
-enum BacktraceCapture {
-    No,
-    #[cfg(feature = "backtrace")]
-    Resolved,
-    #[cfg(feature = "backtrace")]
-    Unresolved,
-}
-
-fn panic_handler(info: &panic::PanicInfo<'_>, capture_backtraces: BacktraceCapture) {
-    PANIC_INFO.with(|pi| {
-        #[allow(unused_mut)]
-        let mut panic = serialize_panic(info.payload());
-        match capture_backtraces {
-            BacktraceCapture::No => {}
-            #[cfg(feature = "backtrace")]
-            BacktraceCapture::Resolved => {
-                panic.backtrace = Some(backtrace::Backtrace::new());
-            }
-            #[cfg(feature = "backtrace")]
-            BacktraceCapture::Unresolved => {
-                panic.backtrace = Some(backtrace::Backtrace::new_unresolved());
-            }
-        }
-        *pi.borrow_mut() = Some(panic);
-    });
-}
-
-fn init_panic_hook(config: &ProcConfig) {
-    let next = panic::take_hook();
-    let capture_backtraces = {
-        #[cfg(feature = "backtrace")]
-        {
-            match (config.capture_backtraces, config.resolve_backtraces) {
-                (false, _) => BacktraceCapture::No,
-                (true, true) => BacktraceCapture::Resolved,
-                (true, false) => BacktraceCapture::Unresolved,
-            }
-        }
-        #[cfg(not(feature = "backtrace"))]
-        {
-            let _config = config;
-            BacktraceCapture::No
-        }
-    };
-    panic::set_hook(Box::new(move |info| {
-        panic_handler(info, capture_backtraces);
-        next(info);
-    }));
-}
-
-fn serialize_panic(panic: &(dyn Any + Send + 'static)) -> Panic {
-    Panic::new(match panic.downcast_ref::<&'static str>() {
-        Some(s) => *s,
-        None => match panic.downcast_ref::<String>() {
-            Some(s) => &s[..],
-            None => "Box<Any>",
-        },
-    })
 }
 
 unsafe fn run_func<F, A, R>(recv: OpaqueIpcReceiver, sender: OpaqueIpcSender, config: &ProcConfig)
