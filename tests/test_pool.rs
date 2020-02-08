@@ -32,3 +32,22 @@ fn test_basic() {
     assert_eq!(ok, 12);
     assert_eq!(failed, 4);
 }
+
+#[test]
+fn test_overload() {
+    let pool = Pool::new(2).unwrap();
+    let mut handles = vec![];
+
+    for _ in 0..10 {
+        handles.push(pool.spawn((), |()| {
+            thread::sleep(Duration::from_secs(10));
+        }));
+    }
+
+    for (idx, handle) in handles.iter().enumerate() {
+        assert_eq!(handle.pid().is_some(), idx < 2);
+    }
+
+    // kill the pool
+    pool.kill();
+}
