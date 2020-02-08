@@ -9,17 +9,32 @@ homepage = "https://github.com/mitsuhiko/procspawn"
 repository = "https://github.com/mitsuhiko/procspawn"
 keywords = ["proc", "spawn", "subprocess"]
 readme = "README.md"
+autoexamples = true
+autotests = true
 
 [package.metadata.docs.rs]
 all-features = true
 
 [features]
 default = ["backtrace"]
+pool = ["libc"]
 test-support = ["ctor"]
 
 [dependencies]
 ipc-channel = "0.13.0"
 serde = { version = "1.0.104", features = ["derive"] }
 backtrace = { version = "0.3.43", optional = true, features = ["serde"] }
-libc = "0.2.66"
+libc = { version = "0.2.66", optional = true }
 ctor = { version = "0.1.12", optional = true }
+
+[[example]]
+name = "pool"
+required-features = ["pool"]
+
+[[example]]
+name = "panic"
+required-features = ["backtrace"]
+
+[[test]]
+name = "test_basic"
+required-features = ["test-support"]

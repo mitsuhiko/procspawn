@@ -2,6 +2,8 @@
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::core::mark_initialized;
+
 static TEST_MODE: AtomicBool = AtomicBool::new(false);
 
 /// Supports the use of procspawn in tests.
@@ -33,6 +35,7 @@ macro_rules! enable_test_support {
 
 pub fn enable() {
     TEST_MODE.store(true, Ordering::SeqCst);
+    mark_initialized();
 }
 
 pub fn update_command_for_tests(cmd: &mut Command) {

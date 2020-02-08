@@ -1,3 +1,4 @@
+#![cfg(feature = "pool")]
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -47,6 +48,8 @@ impl ScheduledTask {
 /// through the pool.
 ///
 /// When the process pool is dropped all processes are killed.
+///
+/// This requires the `pool` feature.
 pub struct Pool {
     sender: mpsc::Sender<(
         MarshalledCall,
@@ -172,6 +175,8 @@ impl Pool {
 }
 
 /// Utility to configure a pool.
+///
+/// This requires the `pool` feature.
 pub struct PoolBuilder {
     size: usize,
     vars: HashMap<OsString, OsString>,
