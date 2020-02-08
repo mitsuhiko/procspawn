@@ -39,10 +39,14 @@ impl ScheduledTask {
 
 /// A process pool.
 ///
-/// This works similar to `spawn` but lets you retain a pool of
-/// processes.  Since procspawn is intended to isolate potentially
-/// crashing code the pool will automatically restart broken
-/// processes.
+/// This works similar to `spawn` but lets you retain a pool of processes. Since
+/// procspawn is intended to isolate potentially crashing code the pool will
+/// automatically restart broken processes.
+///
+/// Note that it's not possible to intercept streams of processes spawned
+/// through the pool.
+///
+/// When the process pool is dropped all processes are killed.
 pub struct Pool {
     sender: mpsc::Sender<(
         MarshalledCall,

@@ -1,6 +1,11 @@
 //! This crate provides the ability to spawn processes with a function similar
 //! to `thread::spawn`.
 //!
+//! Unlike `thread::spawn` data cannot be passed in closures but must be
+//! explicitly passed as single argument which must be `serde` serializable.
+//! The return value from the spawned closure also must be serializable and
+//! can then be unwrapped from the returned join handle.
+//!
 //! ```rust,no_run
 //! procspawn::init();
 //!
@@ -12,26 +17,32 @@
 //! let result = handle.join().unwrap();
 //!```
 //!
+//! Because `procspawn` will invoke a subprocess and there is currently no
+//! reliable way to intercept `main` in Rust it's necessary for you to call
+//! `procspawn::init` at an early time in the program.  The place where this
+//! will be called is the entrypoint for the subprocesses spawned.
+//!
 //! `spawn()` can pass arbitrary serializable data, including IPC senders
-//! and receivers from the `ipc-channel` crate, down to the new process.
+//! and receivers from the [`ipc-channel`](https://crates.io/crates/ipc-channel)
+//! crate, down to the new process.
 //!
 //! ## Differences to Mitosis
 //!
 //! This crate is a fork of the `mitosis` crate with various differences in
 //! how they operate.  The most obvious one is that `procspawn` is very
 //! opinionated about error handling and will automatically capture and
-//! send backtraces across the process boundaries.
+//! send backtraces across the process boundaries.  Additionally `procspawn`
+//! provides a process pool.
 //!
-//! Additionally the desire is to extend `procspawn` to support pooling of
-//! spawned processes for reuse.
+//! ## Feature Flags
 //!
-//! ## Features
+//! The following feature flags exist:
 //!
 //! * `backtrace`: this feature is enabled by default.  When in use then
 //!   backtraces are captured with the `backtrace-rs` crate and serialized
 //!   across process boundaries.
-//! * `test-support`: when this feature is enabled procspawn will attempt
-//!   to detect rust unittests and optimize the way it spawns subprocesses.
+//! * `test-support`: when this feature is enabled procspawn can be used
+//!   with rusttest.  See `enable_test_support!` for more information.
 
 use serde::{Deserialize, Serialize};
 
@@ -40,7 +51,9 @@ mod error;
 mod panic;
 mod pool;
 mod proc;
-mod testsupport;
+
+#[doc(hidden)]
+pub mod testsupport;
 
 pub use self::core::{init, ProcConfig};
 pub use self::error::{Panic, SpawnError};

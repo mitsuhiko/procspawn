@@ -80,11 +80,6 @@ impl ProcConfig {
     pub fn init(mut self) {
         INITIALIZED.store(true, Ordering::SeqCst);
 
-        #[cfg(feature = "test-support")]
-        {
-            crate::testsupport::detect();
-        }
-
         if let Ok(token) = env::var(ENV_NAME) {
             // permit nested invocations
             std::env::remove_var(ENV_NAME);

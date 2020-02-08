@@ -1,52 +1,42 @@
 #![cfg(feature = "test-support")]
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use lazy_static::lazy_static;
+static TEST_MODE: AtomicBool = AtomicBool::new(false);
 
-lazy_static! {
-    static ref TEST_NAME: Mutex<Option<String>> = Mutex::new(None);
-}
-
-fn get_test_function() -> Option<String> {
-    let backtrace = backtrace::Backtrace::new();
-    let frames = backtrace.frames();
-    let mut state = 0;
-
-    for symbol in frames
-        .iter()
-        .rev()
-        .flat_map(|x| x.symbols())
-        .filter_map(|x| x.name())
-        .map(|x| format!("{}", x))
-    {
-        if state == 0 {
-            if symbol.starts_with("test::run_test::") {
-                state = 1;
-            }
-        } else if state == 1 && symbol.starts_with("core::ops::function::FnOnce::call_once") {
-            state = 2;
-        } else if state == 2 {
-            let mut rv = &symbol[..symbol.len() - 19];
-            if rv.ends_with("::{{closure}}") {
-                rv = &rv[..rv.len() - 13];
-            }
-            return Some(rv.to_string());
+/// Supports the use of procspawn in tests.
+///
+/// Due to limitations in rusttest it's currently not easily possible to use
+/// procspawn with rusttest.  The workaround is to call use this macro toplevel
+/// which will define a dummy test which is used to invoke all subprocesses.
+///
+/// ```rust,no_run
+/// procspawn::enable_test_support!();
+/// ```
+///
+/// Requires the `test-support` feature.
+#[macro_export]
+macro_rules! enable_test_support {
+    () => {
+        #[ctor::ctor]
+        fn __procspawn_test_support_init() {
+            $crate::testsupport::enable();
         }
-    }
 
-    None
+        #[test]
+        fn __procspawn_test_helper() {
+            $crate::init();
+        }
+    };
 }
 
-pub fn detect() {
-    if let Some(test_func) = get_test_function() {
-        *TEST_NAME.lock().unwrap() = test_func.rsplitn(2, "::").next().map(|x| x.to_string());
-    }
+pub fn enable() {
+    TEST_MODE.store(true, Ordering::SeqCst);
 }
 
 pub fn update_command_for_tests(cmd: &mut Command) {
-    if let Some(ref test_name) = *TEST_NAME.lock().unwrap() {
-        cmd.arg(test_name);
+    if TEST_MODE.load(Ordering::SeqCst) {
+        cmd.arg("__procspawn_test_helper");
         cmd.arg("--exact");
         cmd.arg("--test-threads=1");
         cmd.arg("-q");
