@@ -38,3 +38,7 @@ required-features = ["backtrace"]
 [[test]]
 name = "test_basic"
 required-features = ["test-support"]
+
+[[test]]
+name = "test_pool"
+required-features = ["test-support", "pool"]

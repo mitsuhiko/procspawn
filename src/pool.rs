@@ -241,7 +241,7 @@ impl PoolBuilder {
     }
 
     /// Creates the pool.
-    pub fn build(self) -> Result<Pool, SpawnError> {
+    pub fn build(&mut self) -> Result<Pool, SpawnError> {
         let (tx, rx) = mpsc::channel();
 
         let shared = Arc::new(PoolShared {

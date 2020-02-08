@@ -46,6 +46,11 @@
 //! * `test-support`: when this feature is enabled procspawn can be used
 //!   with rusttest.  See [`enable_test_support!`](macro.enable_test_support.html)
 //!   for more information.
+//!
+//! ## Platform Support
+//!
+//! Currently this crate only supports macOS and Linux because ipc-channel
+//! itself does not support Windows yet.
 
 use serde::{Deserialize, Serialize};
 
