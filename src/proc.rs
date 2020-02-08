@@ -148,6 +148,12 @@ impl Builder {
         let mut child = process::Command::new(me);
         child.envs(self.vars.into_iter());
         child.env(ENV_NAME, token);
+
+        #[cfg(feature = "test-support")]
+        {
+            crate::testsupport::update_command_for_tests(&mut child);
+        }
+
         if let Some(stdin) = self.stdin {
             child.stdin(stdin);
         }

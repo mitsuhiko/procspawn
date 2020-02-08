@@ -30,6 +30,8 @@
 //! * `backtrace`: this feature is enabled by default.  When in use then
 //!   backtraces are captured with the `backtrace-rs` crate and serialized
 //!   across process boundaries.
+//! * `test-support`: when this feature is enabled procspawn will attempt
+//!   to detect rust unittests and optimize the way it spawns subprocesses.
 
 use serde::{Deserialize, Serialize};
 
@@ -38,6 +40,7 @@ mod error;
 mod panic;
 mod pool;
 mod proc;
+mod testsupport;
 
 pub use self::core::{init, ProcConfig};
 pub use self::error::{Panic, SpawnError};
