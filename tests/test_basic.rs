@@ -1,3 +1,6 @@
+use std::thread;
+use std::time::Duration;
+
 use procspawn::{self, spawn};
 
 procspawn::enable_test_support!();
@@ -18,4 +21,12 @@ fn test_panic() {
     let panic_info = err.panic_info().unwrap();
     assert_eq!(panic_info.message(), "something went wrong");
     assert!(panic_info.backtrace().is_some());
+}
+
+#[test]
+fn test_kill() {
+    let handle = spawn((), |()| {
+        thread::sleep(Duration::from_secs(10));
+    });
+    handle.kill().unwrap();
 }
