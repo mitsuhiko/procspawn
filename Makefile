@@ -46,6 +46,7 @@ testall:
 	cargo run --all-features --example panic
 	cargo run --all-features --example pool
 	cargo run --all-features --example simple
+	cargo run --all-features --example stdout
 .PHONY: testall
 
 readme:
