@@ -22,11 +22,10 @@ macro_rules! enable_test_support {
         #[used]
         fn __procspawn_test_support_init() {
             $crate::testsupport::enable();
-            panic!("hmm");
         }
 
         #[test]
-        fn __procspawn_test_helper() {
+        fn procspawn_test_helper() {
             $crate::init();
         }
     };
@@ -38,7 +37,7 @@ pub fn enable() {
 
 pub fn update_command_for_tests(cmd: &mut Command) {
     if TEST_MODE.load(Ordering::SeqCst) {
-        cmd.arg("__procspawn_test_helper");
+        cmd.arg("procspawn_test_helper");
         cmd.arg("--exact");
         cmd.arg("--test-threads=1");
         cmd.arg("-q");
