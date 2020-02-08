@@ -36,6 +36,10 @@ impl Default for ProcConfig {
     }
 }
 
+pub fn mark_initialized() {
+    INITIALIZED.store(true, Ordering::SeqCst);
+}
+
 impl ProcConfig {
     /// Creates a default proc config.
     pub fn new() -> ProcConfig {
@@ -78,7 +82,7 @@ impl ProcConfig {
 
     /// Consumes the config and initializes the process.
     pub fn init(mut self) {
-        INITIALIZED.store(true, Ordering::SeqCst);
+        mark_initialized();
 
         if let Ok(token) = env::var(ENV_NAME) {
             // permit nested invocations

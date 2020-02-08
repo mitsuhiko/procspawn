@@ -3,7 +3,6 @@ use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
-use std::sync::{mpsc, Arc};
 use std::{env, mem, process};
 
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
@@ -11,7 +10,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::{assert_initialized, MarshalledCall, ENV_NAME};
 use crate::error::{Panic, SpawnError};
-use crate::pool::ScheduledTask;
+
+#[cfg(feature = "pool")]
+use {
+    crate::pool::ScheduledTask,
+    std::sync::{mpsc, Arc},
+};
 
 /// Process factory, which can be used in order to configure the properties
 /// of a process being created.
@@ -184,6 +188,7 @@ pub enum JoinHandleInner<T> {
         recv: IpcReceiver<Result<T, Panic>>,
         process: process::Child,
     },
+    #[cfg(feature = "pool")]
     Pooled {
         waiter_rx: mpsc::Receiver<Result<T, SpawnError>>,
         task: Arc<ScheduledTask>,
@@ -206,6 +211,7 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
     pub fn pid(&self) -> Option<u32> {
         match self.inner {
             Ok(JoinHandleInner::Process { ref process, .. }) => Some(process.id()),
+            #[cfg(feature = "pool")]
             Ok(JoinHandleInner::Pooled { ref task, .. }) => task.pid(),
             Err(_) => None,
         }
@@ -220,6 +226,7 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
                 Ok(rv) => Ok(rv),
                 Err(panic) => Err(panic.into()),
             },
+            #[cfg(feature = "pool")]
             Ok(JoinHandleInner::Pooled { waiter_rx, .. }) => match waiter_rx.recv() {
                 Ok(Ok(rv)) => Ok(rv),
                 Ok(Err(err)) => Err(err),
@@ -244,6 +251,7 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
                 process.wait().ok();
                 rv
             }
+            #[cfg(feature = "pool")]
             Ok(JoinHandleInner::Pooled { ref task, .. }) => {
                 task.kill();
                 Ok(())
@@ -258,6 +266,7 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
             Ok(JoinHandleInner::Process {
                 ref mut process, ..
             }) => process.stdin.as_mut(),
+            #[cfg(feature = "pool")]
             Ok(JoinHandleInner::Pooled { .. }) => None,
             Err(_) => None,
         }
@@ -269,6 +278,7 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
             Ok(JoinHandleInner::Process {
                 ref mut process, ..
             }) => process.stdout.as_mut(),
+            #[cfg(feature = "pool")]
             Ok(JoinHandleInner::Pooled { .. }) => None,
             Err(_) => None,
         }
@@ -280,6 +290,7 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
             Ok(JoinHandleInner::Process {
                 ref mut process, ..
             }) => process.stderr.as_mut(),
+            #[cfg(feature = "pool")]
             Ok(JoinHandleInner::Pooled { .. }) => None,
             Err(_) => None,
         }

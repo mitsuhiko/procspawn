@@ -42,6 +42,7 @@
 //! * `backtrace`: this feature is enabled by default.  When in use then
 //!   backtraces are captured with the `backtrace-rs` crate and serialized
 //!   across process boundaries.
+//! * `pool`: enables the pool support.
 //! * `test-support`: when this feature is enabled procspawn can be used
 //!   with rusttest.  See [`enable_test_support!`](macro.enable_test_support.html)
 //!   for more information.
@@ -59,8 +60,10 @@ pub mod testsupport;
 
 pub use self::core::{init, ProcConfig};
 pub use self::error::{Panic, SpawnError};
-pub use self::pool::{Pool, PoolBuilder};
 pub use self::proc::{Builder, JoinHandle};
+
+#[cfg(feature = "pool")]
+pub use self::pool::{Pool, PoolBuilder};
 
 /// Spawn a new process to run a function with some payload.
 pub fn spawn<
