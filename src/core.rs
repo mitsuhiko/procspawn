@@ -112,7 +112,7 @@ impl ProcConfig {
 /// before it is also executed for all processes spawned through the `spawn`
 /// function.
 ///
-/// For more complex initializations see `ProcConfig`.
+/// For more complex initializations see [`ProcConfig`](struct.ProcConfig.html).
 pub fn init() {
     ProcConfig::default().init()
 }

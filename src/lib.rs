@@ -2,9 +2,9 @@
 //! to `thread::spawn`.
 //!
 //! Unlike `thread::spawn` data cannot be passed in closures but must be
-//! explicitly passed as single argument which must be `serde` serializable.
-//! The return value from the spawned closure also must be serializable and
-//! can then be unwrapped from the returned join handle.
+//! explicitly passed as single argument which must be [`serde`](https://serde.rs/)
+//! serializable.  The return value from the spawned closure also must be
+//! serializable and can then be unwrapped from the returned join handle.
 //!
 //! ```rust,no_run
 //! procspawn::init();
@@ -19,11 +19,12 @@
 //!
 //! Because `procspawn` will invoke a subprocess and there is currently no
 //! reliable way to intercept `main` in Rust it's necessary for you to call
-//! `procspawn::init` at an early time in the program.  The place where this
-//! will be called is the entrypoint for the subprocesses spawned.
+//! [`procspawn::init`](fn.init.html) at an early time in the program. The
+//! place where this will be called is the entrypoint for the subprocesses
+//! spawned.
 //!
-//! `spawn()` can pass arbitrary serializable data, including IPC senders
-//! and receivers from the [`ipc-channel`](https://crates.io/crates/ipc-channel)
+//! [`spawn`](fn.spawn.html) can pass arbitrary serializable data, including
+//! IPC senders and receivers from the [`ipc-channel`](https://crates.io/crates/ipc-channel)
 //! crate, down to the new process.
 //!
 //! ## Differences to Mitosis
@@ -42,7 +43,8 @@
 //!   backtraces are captured with the `backtrace-rs` crate and serialized
 //!   across process boundaries.
 //! * `test-support`: when this feature is enabled procspawn can be used
-//!   with rusttest.  See `enable_test_support!` for more information.
+//!   with rusttest.  See [`enable_test_support!`](macro.enable_test_support.html)
+//!   for more information.
 
 use serde::{Deserialize, Serialize};
 
