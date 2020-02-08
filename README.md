@@ -21,11 +21,11 @@ let result = handle.join().unwrap();
 
 Because `procspawn` will invoke a subprocess and there is currently no
 reliable way to intercept `main` in Rust it's necessary for you to call
-[`procspawn::init`](fn.init.html) at an early time in the program. The
+[`procspawn::init`](https://docs.rs/procspawn/latest/procspawn/fn.init.html) at an early time in the program. The
 place where this will be called is the entrypoint for the subprocesses
 spawned.
 
-[`spawn`](fn.spawn.html) can pass arbitrary serializable data, including
+[`spawn`](https://docs.rs/procspawn/latest/procspawn/fn.spawn.html) can pass arbitrary serializable data, including
 IPC senders and receivers from the [`ipc-channel`](https://crates.io/crates/ipc-channel)
 crate, down to the new process.
 
@@ -45,7 +45,7 @@ The following feature flags exist:
   backtraces are captured with the `backtrace-rs` crate and serialized
   across process boundaries.
 * `test-support`: when this feature is enabled procspawn can be used
-  with rusttest.  See [`enable_test_support!`](macro.enable_test_support.html)
+  with rusttest.  See [`enable_test_support!`](https://docs.rs/procspawn/latest/procspawn/macro.enable_test_support.html)
   for more information.
 
 License: MIT/Apache-2.0

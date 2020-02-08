@@ -45,3 +45,7 @@ testall:
 	cargo run --all-features --example pool
 	cargo run --all-features --example simple
 .PHONY: testall
+
+readme:
+	cargo readme | perl -p -e "s/\]\(([^\/]+)\)/](https:\/\/docs.rs\/procspawn\/latest\/procspawn\/\\1)/" > README.md
+.PHONY: readme
