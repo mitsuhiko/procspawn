@@ -21,8 +21,8 @@ macro_rules! enable_test_support {
         #[ctor::ctor]
         #[used]
         fn __procspawn_test_support_init() {
-            panic!("hmm");
             $crate::testsupport::enable();
+            panic!("hmm");
         }
 
         #[test]
