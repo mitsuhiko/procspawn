@@ -3,13 +3,15 @@ use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
+use std::sync::{mpsc, Arc};
 use std::{env, mem, process};
 
-use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender, OpaqueIpcReceiver};
+use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
 use serde::{Deserialize, Serialize};
 
 use crate::core::{assert_initialized, MarshalledCall, ENV_NAME};
 use crate::error::{Panic, SpawnError};
+use crate::pool::ScheduledTask;
 
 /// Process factory, which can be used in order to configure the properties
 /// of a process being created.
@@ -107,14 +109,13 @@ impl Builder {
         A: Serialize + for<'de> Deserialize<'de>,
         R: Serialize + for<'de> Deserialize<'de>,
     >(
-        self,
+        &mut self,
         args: A,
         func: F,
     ) -> JoinHandle<R> {
         assert_initialized();
         JoinHandle {
-            inner: self.spawn_helper(args, func),
-            _marker: Default::default(),
+            inner: mem::replace(self, Default::default()).spawn_helper(args, func),
         }
     }
 
@@ -126,7 +127,7 @@ impl Builder {
         self,
         args: A,
         _: F,
-    ) -> Result<JoinHandleInner, SpawnError> {
+    ) -> Result<JoinHandleInner<R>, SpawnError> {
         if mem::size_of::<F>() != 0 {
             panic!("procspawn cannot be called with closures that capture data!");
         }
@@ -161,15 +162,26 @@ impl Builder {
         let (_rx, tx) = server.accept()?;
 
         let (args_tx, args_rx) = ipc::channel()?;
-        let (return_tx, return_rx) = ipc::channel::<R>()?;
+        let (return_tx, return_rx) = ipc::channel::<Result<R, Panic>>()?;
         args_tx.send(args)?;
 
         tx.send(MarshalledCall::marshal::<F, A, R>(args_rx, return_tx))?;
-        Ok(JoinHandleInner {
-            recv: return_rx.to_opaque(),
+        Ok(JoinHandleInner::Process {
+            recv: return_rx,
             process,
         })
     }
+}
+
+pub enum JoinHandleInner<T> {
+    Process {
+        recv: IpcReceiver<Result<T, Panic>>,
+        process: process::Child,
+    },
+    Pooled {
+        waiter_rx: mpsc::Receiver<Result<T, SpawnError>>,
+        task: Arc<ScheduledTask>,
+    },
 }
 
 /// An owned permission to join on a process (block on its termination).
@@ -177,65 +189,93 @@ impl Builder {
 /// The join handle can be used to join a process but also provides the
 /// ability to kill it.
 pub struct JoinHandle<T> {
-    pub(crate) inner: Result<JoinHandleInner, SpawnError>,
-    _marker: std::marker::PhantomData<T>,
-}
-
-pub struct JoinHandleInner {
-    pub(crate) recv: OpaqueIpcReceiver,
-    pub(crate) process: process::Child,
+    pub(crate) inner: Result<JoinHandleInner<T>, SpawnError>,
 }
 
 impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
+    /// Returns the process id of the inner process.
+    ///
+    /// If a process pool is being used this might return `None` if the
+    /// call was not yet delegated to a process.
+    pub fn pid(&self) -> Option<u32> {
+        match self.inner {
+            Ok(JoinHandleInner::Process { ref process, .. }) => Some(process.id()),
+            Ok(JoinHandleInner::Pooled { ref task, .. }) => task.pid(),
+            Err(_) => None,
+        }
+    }
+
     /// Wait for the child process to return a result.
+    ///
+    /// If the join handle was created from a pool the join is virtualized.
     pub fn join(self) -> Result<T, SpawnError> {
         match self.inner {
-            Ok(inner) => {
-                let recv: IpcReceiver<Result<T, Panic>> = inner.recv.to();
-                match recv.recv()? {
-                    Ok(rv) => Ok(rv),
-                    Err(panic) => Err(panic.into()),
-                }
-            }
+            Ok(JoinHandleInner::Process { recv, .. }) => match recv.recv()? {
+                Ok(rv) => Ok(rv),
+                Err(panic) => Err(panic.into()),
+            },
+            Ok(JoinHandleInner::Pooled { waiter_rx, .. }) => match waiter_rx.recv() {
+                Ok(Ok(rv)) => Ok(rv),
+                Ok(Err(err)) => Err(err),
+                Err(..) => unimplemented!(),
+            },
             Err(err) => Err(err),
         }
     }
 
     /// Kill the child process.
+    ///
+    /// If the join handle was created from a pool this call will do one of
+    /// two things depending on the situation:
+    ///
+    /// * if the call was already picked up by the process, the process will
+    ///   be killed.
+    /// * if the call was not yet scheduled to a process it will be cancelled.
     pub fn kill(self) -> std::io::Result<()> {
         match self.inner {
-            Ok(JoinHandleInner { mut process, .. }) => process.kill().map_err(Into::into),
-            _ => Ok(()),
+            Ok(JoinHandleInner::Process { mut process, .. }) => {
+                let rv = process.kill().map_err(Into::into);
+                process.wait().ok();
+                rv
+            }
+            Ok(JoinHandleInner::Pooled { ref task, .. }) => {
+                task.kill();
+                Ok(())
+            }
+            Err(_) => Ok(()),
         }
     }
 
     /// Fetch the `stdin` handle if it has been captured
     pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
         match self.inner {
-            Ok(JoinHandleInner {
+            Ok(JoinHandleInner::Process {
                 ref mut process, ..
             }) => process.stdin.as_mut(),
-            _ => None,
+            Ok(JoinHandleInner::Pooled { .. }) => None,
+            Err(_) => None,
         }
     }
 
     /// Fetch the `stdout` handle if it has been captured
     pub fn stdout(&mut self) -> Option<&mut ChildStdout> {
         match self.inner {
-            Ok(JoinHandleInner {
+            Ok(JoinHandleInner::Process {
                 ref mut process, ..
             }) => process.stdout.as_mut(),
-            _ => None,
+            Ok(JoinHandleInner::Pooled { .. }) => None,
+            Err(_) => None,
         }
     }
 
     /// Fetch the `stderr` handle if it has been captured
     pub fn stderr(&mut self) -> Option<&mut ChildStderr> {
         match self.inner {
-            Ok(JoinHandleInner {
+            Ok(JoinHandleInner::Process {
                 ref mut process, ..
             }) => process.stderr.as_mut(),
-            _ => None,
+            Ok(JoinHandleInner::Pooled { .. }) => None,
+            Err(_) => None,
         }
     }
 }

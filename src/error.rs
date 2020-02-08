@@ -77,6 +77,7 @@ enum SpawnErrorKind {
     Ipc(IpcError),
     Io(IoError),
     Panic(Panic),
+    Cancelled,
 }
 
 impl SpawnError {
@@ -88,6 +89,12 @@ impl SpawnError {
             None
         }
     }
+
+    pub(crate) fn new_cancelled() -> SpawnError {
+        SpawnError {
+            kind: SpawnErrorKind::Cancelled,
+        }
+    }
 }
 
 impl std::error::Error for SpawnError {
@@ -96,6 +103,7 @@ impl std::error::Error for SpawnError {
             SpawnErrorKind::Ipc(ref err) => Some(&*err),
             SpawnErrorKind::Io(ref err) => Some(&*err),
             SpawnErrorKind::Panic(_) => None,
+            SpawnErrorKind::Cancelled => None,
         }
     }
 }
@@ -106,6 +114,7 @@ impl fmt::Display for SpawnError {
             SpawnErrorKind::Ipc(_) => write!(f, "process spawn error: ipc error"),
             SpawnErrorKind::Io(_) => write!(f, "process spawn error: i/o error"),
             SpawnErrorKind::Panic(ref p) => write!(f, "process spawn error: panic: {}", p),
+            SpawnErrorKind::Cancelled => write!(f, "process spawn error: call cancelled"),
         }
     }
 }

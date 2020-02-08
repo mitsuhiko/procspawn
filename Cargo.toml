@@ -12,3 +12,4 @@ default = ["backtrace"]
 ipc-channel = "0.13.0"
 serde = { version = "1.0.104", features = ["derive"] }
 backtrace = { version = "0.3.43", optional = true, features = ["serde"] }
+libc = "0.2.66"
