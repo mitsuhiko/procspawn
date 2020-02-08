@@ -34,6 +34,27 @@ fn test_basic() {
 }
 
 #[test]
+fn test_timeout() {
+    let pool = Pool::new(4).unwrap();
+
+    let handle = pool.spawn((), |()| {
+        thread::sleep(Duration::from_secs(10));
+    });
+    match handle.join_timeout(Duration::from_secs(1)) {
+        Ok(()) => panic!("should not happen"),
+        Err(err) => assert!(err.is_timeout()),
+    }
+
+    let handle = pool.spawn((), |()| {
+        thread::sleep(Duration::from_secs(1));
+        42
+    });
+
+    let val = handle.join_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(val, 42);
+}
+
+#[test]
 fn test_overload() {
     let pool = Pool::new(2).unwrap();
     let mut handles = vec![];

@@ -1,5 +1,5 @@
 use std::fmt;
-use std::io::Error as IoError;
+use std::io;
 
 use ipc_channel::Error as IpcError;
 use serde::{Deserialize, Serialize};
@@ -75,7 +75,7 @@ pub struct SpawnError {
 #[derive(Debug)]
 enum SpawnErrorKind {
     Ipc(IpcError),
-    Io(IoError),
+    Io(io::Error),
     Panic(Panic),
     #[cfg(feature = "pool")]
     Cancelled,
@@ -88,6 +88,15 @@ impl SpawnError {
             Some(info)
         } else {
             None
+        }
+    }
+
+    /// Returns true if this is a timeout.
+    pub fn is_timeout(&self) -> bool {
+        if let SpawnErrorKind::Io(ref err) = self.kind {
+            err.kind() == io::ErrorKind::TimedOut
+        } else {
+            false
         }
     }
 
@@ -131,8 +140,8 @@ impl From<IpcError> for SpawnError {
     }
 }
 
-impl From<IoError> for SpawnError {
-    fn from(err: IoError) -> SpawnError {
+impl From<io::Error> for SpawnError {
+    fn from(err: io::Error) -> SpawnError {
         SpawnError {
             kind: SpawnErrorKind::Io(err),
         }

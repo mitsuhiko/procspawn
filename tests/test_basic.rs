@@ -33,6 +33,25 @@ fn test_kill() {
 }
 
 #[test]
+fn test_timeout() {
+    let handle = spawn((), |()| {
+        thread::sleep(Duration::from_secs(10));
+    });
+    match handle.join_timeout(Duration::from_secs(1)) {
+        Ok(()) => panic!("should not happen"),
+        Err(err) => assert!(err.is_timeout()),
+    }
+
+    let handle = spawn((), |()| {
+        thread::sleep(Duration::from_secs(1));
+        42
+    });
+
+    let val = handle.join_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(val, 42);
+}
+
+#[test]
 fn test_envvar() {
     let val = procspawn::Builder::new()
         .env("FOO", "42")

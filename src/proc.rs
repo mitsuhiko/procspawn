@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
+use std::io;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
+use std::thread;
+use std::time::Duration;
 use std::{env, mem, process};
 
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
@@ -220,17 +223,73 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
     /// Wait for the child process to return a result.
     ///
     /// If the join handle was created from a pool the join is virtualized.
-    pub fn join(self) -> Result<T, SpawnError> {
+    #[allow(unused_mut)]
+    pub fn join(mut self) -> Result<T, SpawnError> {
         match self.inner {
             Ok(JoinHandleInner::Process { recv, .. }) => match recv.recv()? {
                 Ok(rv) => Ok(rv),
                 Err(panic) => Err(panic.into()),
             },
             #[cfg(feature = "pool")]
-            Ok(JoinHandleInner::Pooled { waiter_rx, .. }) => match waiter_rx.recv() {
-                Ok(Ok(rv)) => Ok(rv),
-                Ok(Err(err)) => Err(err),
-                Err(..) => unimplemented!(),
+            Ok(JoinHandleInner::Pooled {
+                ref mut waiter_rx, ..
+            }) => match waiter_rx.recv() {
+                Ok(val) => val,
+                Err(..) => {
+                    self.kill().ok();
+                    Err(io::Error::new(io::ErrorKind::BrokenPipe, "process went await").into())
+                }
+            },
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Wait for the child process to return a result with a timeout.
+    ///
+    /// If the timeout was reached the process the process will be killed.
+    #[allow(unused_mut)]
+    pub fn join_timeout(mut self, timeout: Duration) -> Result<T, SpawnError>
+    where
+        T: Send + 'static,
+    {
+        match self.inner {
+            Ok(JoinHandleInner::Process { ref recv, .. }) => {
+                let mut remaining = timeout;
+                loop {
+                    match recv.try_recv() {
+                        Ok(Ok(rv)) => return Ok(rv),
+                        Ok(Err(panic)) => return Err(panic.into()),
+                        Err(..) => {
+                            let to_sleep = Duration::from_millis(100).min(remaining);
+                            thread::sleep(to_sleep);
+                            if let Some(rem) = remaining.checked_sub(to_sleep) {
+                                remaining = rem;
+                            }
+                            if remaining == Duration::from_millis(0) {
+                                self.kill().ok();
+                                return Err(io::Error::new(
+                                    io::ErrorKind::TimedOut,
+                                    "timed out waiting",
+                                )
+                                .into());
+                            }
+                        }
+                    }
+                }
+            }
+            #[cfg(feature = "pool")]
+            Ok(JoinHandleInner::Pooled {
+                ref mut waiter_rx, ..
+            }) => match waiter_rx.recv_timeout(timeout) {
+                Ok(val) => val,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    self.kill().ok();
+                    Err(io::Error::new(io::ErrorKind::BrokenPipe, "process went await").into())
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    self.kill().ok();
+                    Err(io::Error::new(io::ErrorKind::TimedOut, "timed out waiting").into())
+                }
             },
             Err(err) => Err(err),
         }
