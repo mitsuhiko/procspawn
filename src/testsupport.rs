@@ -19,6 +19,7 @@ static TEST_MODE: AtomicBool = AtomicBool::new(false);
 macro_rules! enable_test_support {
     () => {
         #[ctor::ctor]
+        #[used]
         fn __procspawn_test_support_init() {
             $crate::testsupport::enable();
         }
