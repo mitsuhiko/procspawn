@@ -44,8 +44,14 @@ The following feature flags exist:
 * `backtrace`: this feature is enabled by default.  When in use then
   backtraces are captured with the `backtrace-rs` crate and serialized
   across process boundaries.
+* `pool`: enables the pool support.
 * `test-support`: when this feature is enabled procspawn can be used
   with rusttest.  See [`enable_test_support!`](https://docs.rs/procspawn/latest/procspawn/macro.enable_test_support.html)
   for more information.
+
+### Platform Support
+
+Currently this crate only supports macOS and Linux because ipc-channel
+itself does not support Windows yet.
 
 License: MIT/Apache-2.0
