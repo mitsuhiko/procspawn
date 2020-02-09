@@ -8,18 +8,57 @@ use serde::{Deserialize, Serialize};
 ///
 /// This contains the marshalled panic information so that it can be used
 /// for other purposes.
+///
+/// This is similar to `std::panic::PanicInfo` but can cross process boundaries.
 #[derive(Serialize, Deserialize)]
-pub struct Panic {
+pub struct PanicInfo {
     msg: String,
+    pub(crate) location: Option<Location>,
     #[cfg(feature = "backtrace")]
     pub(crate) backtrace: Option<backtrace::Backtrace>,
 }
 
-impl Panic {
+/// Location of a panic.
+///
+/// This is similar to `std::panic::Location` but can cross process boundaries.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Location {
+    file: String,
+    line: u32,
+    column: u32,
+}
+
+impl Location {
+    pub(crate) fn from_std(loc: &std::panic::Location) -> Location {
+        Location {
+            file: loc.file().into(),
+            line: loc.line(),
+            column: loc.column(),
+        }
+    }
+
+    /// Returns the name of the source file from which the panic originated.
+    pub fn file(&self) -> &str {
+        &self.file
+    }
+
+    /// Returns the line number from which the panic originated.
+    pub fn line(&self) -> u32 {
+        self.line
+    }
+
+    /// Returns the column from which the panic originated.
+    pub fn column(&self) -> u32 {
+        self.column
+    }
+}
+
+impl PanicInfo {
     /// Creates a new panic object.
-    pub(crate) fn new(s: &str) -> Panic {
-        Panic {
+    pub(crate) fn new(s: &str) -> PanicInfo {
+        PanicInfo {
             msg: s.into(),
+            location: None,
             #[cfg(feature = "backtrace")]
             backtrace: None,
         }
@@ -28,6 +67,11 @@ impl Panic {
     /// Returns the message of the panic.
     pub fn message(&self) -> &str {
         self.msg.as_str()
+    }
+
+    /// Returns the panic location.
+    pub fn location(&self) -> Option<&Location> {
+        self.location.as_ref()
     }
 
     /// Returns a reference to the backtrace.
@@ -40,10 +84,11 @@ impl Panic {
     }
 }
 
-impl fmt::Debug for Panic {
+impl fmt::Debug for PanicInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Panic")
+        f.debug_struct("PanicInfo")
             .field("message", &self.message())
+            .field("location", &self.location())
             .field("backtrace", &{
                 #[cfg(feature = "backtrace")]
                 {
@@ -58,7 +103,7 @@ impl fmt::Debug for Panic {
     }
 }
 
-impl fmt::Display for Panic {
+impl fmt::Display for PanicInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.msg)
     }
@@ -76,19 +121,24 @@ pub struct SpawnError {
 enum SpawnErrorKind {
     Ipc(IpcError),
     Io(io::Error),
-    Panic(Panic),
+    Panic(PanicInfo),
     Cancelled,
     TimedOut,
 }
 
 impl SpawnError {
     /// If a panic ocurred this returns the captured panic info.
-    pub fn panic_info(&self) -> Option<&Panic> {
+    pub fn panic_info(&self) -> Option<&PanicInfo> {
         if let SpawnErrorKind::Panic(ref info) = self.kind {
             Some(info)
         } else {
             None
         }
+    }
+
+    /// True if this error comes from a panic.
+    pub fn is_panic(&self) -> bool {
+        self.panic_info().is_some()
     }
 
     /// True if this error indicates a cancellation.
@@ -162,8 +212,8 @@ impl From<io::Error> for SpawnError {
     }
 }
 
-impl From<Panic> for SpawnError {
-    fn from(panic: Panic) -> SpawnError {
+impl From<PanicInfo> for SpawnError {
+    fn from(panic: PanicInfo) -> SpawnError {
         SpawnError {
             kind: SpawnErrorKind::Panic(panic),
         }
