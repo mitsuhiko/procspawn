@@ -139,6 +139,11 @@ macro_rules! define_common_methods {
         /// Schedules a closure to be run just before the `exec` function is
         /// invoked.
         ///
+        /// # Safety
+        ///
+        /// This method is inherently unsafe.  See the notes of the unix command
+        /// ext for more information.
+        ///
         /// Equivalent to `std::os::unix::process::CommandExt::pre_exec`
         #[cfg(unix)]
         pub unsafe fn pre_exec<F>(&mut self, f: F) -> &mut Self
