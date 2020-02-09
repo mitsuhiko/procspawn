@@ -1,6 +1,7 @@
 use std::ffi::OsStr;
 use std::fmt;
 use std::io;
+use std::process;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
@@ -238,6 +239,9 @@ impl Pool {
 #[derive(Debug)]
 pub struct PoolBuilder {
     size: usize,
+    disable_stdin: bool,
+    disable_stdout: bool,
+    disable_stderr: bool,
     common: ProcCommon,
 }
 
@@ -250,11 +254,32 @@ impl PoolBuilder {
     fn new(size: usize) -> PoolBuilder {
         PoolBuilder {
             size,
+            disable_stdin: false,
+            disable_stdout: false,
+            disable_stderr: false,
             common: ProcCommon::default(),
         }
     }
 
     define_common_methods!();
+
+    /// Redirects stdin to `/dev/null`.
+    pub fn disable_stdin(&mut self) -> &mut Self {
+        self.disable_stdin = true;
+        self
+    }
+
+    /// Redirects stdout to `/dev/null`.
+    pub fn disable_stdout(&mut self) -> &mut Self {
+        self.disable_stdout = true;
+        self
+    }
+
+    /// Redirects stderr to `/dev/null`.
+    pub fn disable_stderr(&mut self) -> &mut Self {
+        self.disable_stderr = true;
+        self
+    }
 
     /// Creates the pool.
     pub fn build(&mut self) -> Result<Pool, SpawnError> {
@@ -336,19 +361,32 @@ fn spawn_worker(
     let current_call_tx = Arc::new(Mutex::new(None::<ipc::IpcSender<MarshalledCall>>));
 
     let spawn = Arc::new(Mutex::new({
+        let disable_stdin = builder.disable_stdin;
+        let disable_stdout = builder.disable_stdout;
+        let disable_stderr = builder.disable_stderr;
         let common = builder.common.clone();
         let join_handle = join_handle.clone();
         let current_call_tx = current_call_tx.clone();
         move || {
             let (call_tx, call_rx) = ipc::channel::<MarshalledCall>().unwrap();
-            *join_handle.lock().unwrap() =
-                Some(Builder::new().common(common.clone()).spawn(call_rx, |rx| {
-                    while let Ok(call) = rx.recv() {
-                        // we never want panic handling here as we're going to
-                        // defer this to the process'.
-                        call.call(false);
-                    }
-                }));
+            let mut builder = Builder::new();
+            builder.common(common.clone());
+            if disable_stdin {
+                builder.stdin(process::Stdio::null());
+            }
+            if disable_stdout {
+                builder.stdout(process::Stdio::null());
+            }
+            if disable_stderr {
+                builder.stderr(process::Stdio::null());
+            }
+            *join_handle.lock().unwrap() = Some(builder.spawn(call_rx, |rx| {
+                while let Ok(call) = rx.recv() {
+                    // we never want panic handling here as we're going to
+                    // defer this to the process'.
+                    call.call(false);
+                }
+            }));
             *current_call_tx.lock().unwrap() = Some(call_tx);
         }
     }));
