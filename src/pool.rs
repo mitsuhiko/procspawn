@@ -98,6 +98,8 @@ impl fmt::Debug for Pool {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Pool")
             .field("size", &self.size())
+            .field("active_count", &self.active_count())
+            .field("queued_count", &self.queued_count())
             .finish()
     }
 }
@@ -127,7 +129,6 @@ impl Pool {
     pub fn active_count(&self) -> usize {
         self.shared.active_count.load(Ordering::SeqCst)
     }
-
 
     /// Spawns a closure into a process of the pool.
     pub fn spawn<
