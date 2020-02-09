@@ -64,8 +64,8 @@ pub mod testsupport;
 
 pub use self::core::{init, ProcConfig};
 pub use self::error::{Panic, SpawnError};
-pub use self::proc::{Builder, JoinHandle};
 pub use self::pool::{Pool, PoolBuilder};
+pub use self::proc::{Builder, JoinHandle};
 
 /// Spawn a new process to run a function with some payload.
 pub fn spawn<
