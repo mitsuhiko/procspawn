@@ -135,6 +135,11 @@ impl SpawnError {
         }
     }
 
+    /// Returns `true` if this is a panic.
+    pub fn is_panic(&self) -> bool {
+        self.panic_info().is_some()
+    }
+
     pub(crate) fn new_cancelled() -> SpawnError {
         SpawnError {
             kind: SpawnErrorKind::Cancelled,
