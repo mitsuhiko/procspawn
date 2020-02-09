@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
@@ -36,11 +37,18 @@ pub struct PooledHandle<T> {
     shared: Arc<PooledHandleState>,
 }
 
-impl<T: Serialize + for<'de> Deserialize<'de>> PooledHandle<T> {
+impl<T> PooledHandle<T> {
     pub fn process_handle_state(&self) -> Option<Arc<ProcessHandleState>> {
         self.shared.process_handle_state.lock().unwrap().clone()
     }
 
+    pub fn kill(&mut self) -> Result<(), SpawnError> {
+        self.shared.kill();
+        Ok(())
+    }
+}
+
+impl<T: Serialize + for<'de> Deserialize<'de>> PooledHandle<T> {
     pub fn join(&mut self) -> Result<T, SpawnError> {
         match self.waiter_rx.recv() {
             Ok(Ok(rv)) => Ok(rv),
@@ -61,11 +69,6 @@ impl<T: Serialize + for<'de> Deserialize<'de>> PooledHandle<T> {
                 Err(io::Error::new(io::ErrorKind::BrokenPipe, "process went away").into())
             }
         }
-    }
-
-    pub fn kill(&mut self) -> Result<(), SpawnError> {
-        self.shared.kill();
-        Ok(())
     }
 }
 
@@ -91,15 +94,40 @@ pub struct Pool {
     shared: Arc<PoolShared>,
 }
 
+impl fmt::Debug for Pool {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Pool")
+            .field("size", &self.size())
+            .field("active_count", &self.active_count())
+            .field("queued_count", &self.queued_count())
+            .finish()
+    }
+}
+
 impl Pool {
     /// Creates the default pool.
     pub fn new(size: usize) -> Result<Pool, SpawnError> {
         Pool::builder(size).build()
     }
 
-    /// Creats a builder to customize pool creation.
+    /// Creates a builder to customize pool creation.
     pub fn builder(size: usize) -> PoolBuilder {
         PoolBuilder::new(size)
+    }
+
+    /// Returns the size of the pool.
+    pub fn size(&self) -> usize {
+        self.shared.monitors.lock().unwrap().len()
+    }
+
+    /// Returns the number of jobs waiting to executed in the pool.
+    pub fn queued_count(&self) -> usize {
+        self.shared.queued_count.load(Ordering::Relaxed)
+    }
+
+    /// Returns the number of currently active threads.
+    pub fn active_count(&self) -> usize {
+        self.shared.active_count.load(Ordering::SeqCst)
     }
 
     /// Spawns a closure into a process of the pool.
@@ -208,6 +236,7 @@ impl Pool {
 /// Utility to configure a pool.
 ///
 /// This requires the `pool` feature.
+#[derive(Debug)]
 pub struct PoolBuilder {
     size: usize,
     vars: HashMap<OsString, OsString>,

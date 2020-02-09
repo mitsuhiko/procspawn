@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
@@ -234,11 +235,35 @@ fn is_ipc_timeout(err: &ipc_channel::Error) -> bool {
     }
 }
 
-impl<T: Serialize + for<'de> Deserialize<'de>> ProcessHandle<T> {
+impl<T> ProcessHandle<T> {
     pub fn state(&self) -> Arc<ProcessHandleState> {
         self.state.clone()
     }
 
+    pub fn kill(&mut self) -> Result<(), SpawnError> {
+        if self.state.exited.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let rv = self.process.kill().map_err(Into::into);
+        self.process.wait().ok();
+        self.state.exited.store(true, Ordering::SeqCst);
+        rv
+    }
+
+    pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
+        self.process.stdin.as_mut()
+    }
+
+    pub fn stdout(&mut self) -> Option<&mut ChildStdout> {
+        self.process.stdout.as_mut()
+    }
+
+    pub fn stderr(&mut self) -> Option<&mut ChildStderr> {
+        self.process.stderr.as_mut()
+    }
+}
+
+impl<T: Serialize + for<'de> Deserialize<'de>> ProcessHandle<T> {
     pub fn join(&mut self) -> Result<T, SpawnError> {
         let rv = self.recv.recv()?.map_err(Into::into);
         self.state.exited.store(true, Ordering::SeqCst);
@@ -270,28 +295,6 @@ impl<T: Serialize + for<'de> Deserialize<'de>> ProcessHandle<T> {
         self.state.exited.store(true, Ordering::SeqCst);
         rv
     }
-
-    pub fn kill(&mut self) -> Result<(), SpawnError> {
-        if self.state.exited.load(Ordering::SeqCst) {
-            return Ok(());
-        }
-        let rv = self.process.kill().map_err(Into::into);
-        self.process.wait().ok();
-        self.state.exited.store(true, Ordering::SeqCst);
-        rv
-    }
-
-    pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
-        self.process.stdin.as_mut()
-    }
-
-    pub fn stdout(&mut self) -> Option<&mut ChildStdout> {
-        self.process.stdout.as_mut()
-    }
-
-    pub fn stderr(&mut self) -> Option<&mut ChildStderr> {
-        self.process.stderr.as_mut()
-    }
 }
 
 pub enum JoinHandleInner<T> {
@@ -307,7 +310,15 @@ pub struct JoinHandle<T> {
     pub(crate) inner: Result<JoinHandleInner<T>, SpawnError>,
 }
 
-impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
+impl<T> fmt::Debug for JoinHandle<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("JoinHandle")
+            .field("pid", &self.pid())
+            .finish()
+    }
+}
+
+impl<T> JoinHandle<T> {
     pub(crate) fn process_handle_state(&self) -> Option<Arc<ProcessHandleState>> {
         match self.inner {
             Ok(JoinHandleInner::Process(ref handle)) => Some(handle.state()),
@@ -322,26 +333,6 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
     /// processes.
     pub fn pid(&self) -> Option<u32> {
         self.process_handle_state().and_then(|x| x.pid())
-    }
-
-    /// Wait for the child process to return a result.
-    ///
-    /// If the join handle was created from a pool the join is virtualized.
-    pub fn join(self) -> Result<T, SpawnError> {
-        match self.inner {
-            Ok(JoinHandleInner::Process(mut handle)) => handle.join(),
-            Ok(JoinHandleInner::Pooled(mut handle)) => handle.join(),
-            Err(err) => Err(err),
-        }
-    }
-
-    /// Like `join` but with a timeout.
-    pub fn join_timeout(self, timeout: Duration) -> Result<T, SpawnError> {
-        match self.inner {
-            Ok(JoinHandleInner::Process(mut handle)) => handle.join_timeout(timeout),
-            Ok(JoinHandleInner::Pooled(mut handle)) => handle.join_timeout(timeout),
-            Err(err) => Err(err),
-        }
     }
 
     /// Kill the child process.
@@ -384,6 +375,28 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
             Ok(JoinHandleInner::Process(ref mut process)) => process.stderr(),
             Ok(JoinHandleInner::Pooled { .. }) => None,
             Err(_) => None,
+        }
+    }
+}
+
+impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
+    /// Wait for the child process to return a result.
+    ///
+    /// If the join handle was created from a pool the join is virtualized.
+    pub fn join(self) -> Result<T, SpawnError> {
+        match self.inner {
+            Ok(JoinHandleInner::Process(mut handle)) => handle.join(),
+            Ok(JoinHandleInner::Pooled(mut handle)) => handle.join(),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Like `join` but with a timeout.
+    pub fn join_timeout(self, timeout: Duration) -> Result<T, SpawnError> {
+        match self.inner {
+            Ok(JoinHandleInner::Process(mut handle)) => handle.join_timeout(timeout),
+            Ok(JoinHandleInner::Pooled(mut handle)) => handle.join_timeout(timeout),
+            Err(err) => Err(err),
         }
     }
 }
