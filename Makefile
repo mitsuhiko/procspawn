@@ -38,7 +38,6 @@ checkall:
 
 testall:
 	cargo check --no-default-features --all
-	cargo check --no-default-features --features pool --all
 	cargo check --no-default-features --features test-support --all
 	cargo test --all-features --all
 	cargo run --all-features --example join

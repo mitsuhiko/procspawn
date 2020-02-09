@@ -26,7 +26,7 @@ fn test_panic() {
 
 #[test]
 fn test_kill() {
-    let handle = spawn((), |()| {
+    let mut handle = spawn((), |()| {
         thread::sleep(Duration::from_secs(10));
     });
     handle.kill().unwrap();

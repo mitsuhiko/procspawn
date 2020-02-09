@@ -1,6 +1,6 @@
-#![cfg(feature = "pool")]
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
+use std::io;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
@@ -10,31 +10,47 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::MarshalledCall;
 use crate::error::SpawnError;
-use crate::proc::{Builder, JoinHandle, JoinHandleInner};
+use crate::proc::{Builder, JoinHandle, JoinHandleInner, ProcessHandleState};
 
 type WaitFunc = Box<dyn FnOnce() -> bool + Send>;
 type NotifyErrorFunc = Box<dyn FnMut(SpawnError) + Send>;
 
-pub struct ScheduledTask {
-    cancelled: AtomicBool,
-    process: AtomicUsize,
+#[derive(Debug)]
+pub struct PooledHandleState {
+    pub cancelled: AtomicBool,
+    pub process_handle_state: Mutex<Option<Arc<ProcessHandleState>>>,
 }
 
-impl ScheduledTask {
-    pub fn pid(&self) -> Option<u32> {
-        match self.process.load(Ordering::SeqCst) {
-            0 => None,
-            x => Some(x as u32),
+impl PooledHandleState {
+    pub fn kill(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        if let Some(ref process_handle_state) = *self.process_handle_state.lock().unwrap() {
+            process_handle_state.kill();
+        }
+    }
+}
+
+pub struct PooledHandle<T> {
+    waiter_rx: mpsc::Receiver<Result<T, SpawnError>>,
+    shared: Arc<PooledHandleState>,
+}
+
+impl<T: Serialize + for<'de> Deserialize<'de>> PooledHandle<T> {
+    pub fn process_handle_state(&self) -> Option<Arc<ProcessHandleState>> {
+        self.shared.process_handle_state.lock().unwrap().clone()
+    }
+
+    pub fn join(&mut self) -> Result<T, SpawnError> {
+        match self.waiter_rx.recv() {
+            Ok(Ok(rv)) => Ok(rv),
+            Ok(Err(err)) => Err(err),
+            Err(..) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "process went away").into()),
         }
     }
 
-    pub fn kill(&self) {
-        self.cancelled.store(true, Ordering::SeqCst);
-        if let Some(pid) = self.pid() {
-            unsafe {
-                libc::kill(pid as i32, libc::SIGKILL);
-            }
-        }
+    pub fn kill(&mut self) -> Result<(), SpawnError> {
+        self.shared.kill();
+        Ok(())
     }
 }
 
@@ -53,7 +69,7 @@ impl ScheduledTask {
 pub struct Pool {
     sender: mpsc::Sender<(
         MarshalledCall,
-        Arc<ScheduledTask>,
+        Arc<PooledHandleState>,
         WaitFunc,
         NotifyErrorFunc,
     )>,
@@ -91,15 +107,15 @@ impl Pool {
         let error_waiter_tx = waiter_tx.clone();
         self.shared.queued_count.fetch_add(1, Ordering::SeqCst);
 
-        let task = Arc::new(ScheduledTask {
+        let shared = Arc::new(PooledHandleState {
             cancelled: AtomicBool::new(false),
-            process: AtomicUsize::new(0),
+            process_handle_state: Mutex::new(None),
         });
 
         self.sender
             .send((
                 call,
-                task.clone(),
+                shared.clone(),
                 Box::new(move || {
                     if let Ok(rv) = return_rx.recv() {
                         waiter_tx.send(rv.map_err(Into::into)).is_ok()
@@ -114,7 +130,7 @@ impl Pool {
             .ok();
 
         JoinHandle {
-            inner: Ok(JoinHandleInner::Pooled { waiter_rx, task }),
+            inner: Ok(JoinHandleInner::Pooled(PooledHandle { waiter_rx, shared })),
         }
     }
 
@@ -161,7 +177,7 @@ impl Pool {
         }
         self.shared.dead.store(true, Ordering::SeqCst);
         for monitor in self.shared.monitors.lock().unwrap().iter_mut() {
-            if let Some(join_handle) = monitor.join_handle.lock().unwrap().take() {
+            if let Some(mut join_handle) = monitor.join_handle.lock().unwrap().take() {
                 join_handle.kill().ok();
             }
         }
@@ -277,7 +293,7 @@ struct PoolShared {
     call_receiver: Mutex<
         mpsc::Receiver<(
             MarshalledCall,
-            Arc<ScheduledTask>,
+            Arc<PooledHandleState>,
             WaitFunc,
             NotifyErrorFunc,
         )>,
@@ -370,7 +386,7 @@ fn spawn_worker(
                     break;
                 }
 
-                let (call, scheduled_task, wait_func, mut err_func) = {
+                let (call, state, wait_func, mut err_func) = {
                     // Only lock jobs for the time it takes
                     // to get a job, not run it.
                     let lock = shared
@@ -387,13 +403,11 @@ fn spawn_worker(
                 shared.queued_count.fetch_sub(1, Ordering::SeqCst);
 
                 // this task was already cancelled, no need to execute it
-                if scheduled_task.cancelled.load(Ordering::SeqCst) {
+                if state.cancelled.load(Ordering::SeqCst) {
                     err_func(SpawnError::new_cancelled());
                 } else {
                     if let Some(ref mut handle) = *join_handle.lock().unwrap() {
-                        scheduled_task
-                            .process
-                            .store(handle.pid().unwrap_or(0) as usize, Ordering::SeqCst);
+                        *state.process_handle_state.lock().unwrap() = handle.process_handle_state();
                     }
 
                     let mut restart = false;
@@ -414,6 +428,8 @@ fn spawn_worker(
                     if !restart && !wait_func() {
                         restart = true;
                     }
+
+                    *state.process_handle_state.lock().unwrap() = None;
 
                     if restart {
                         check_for_restart(&mut err_func);

@@ -17,19 +17,14 @@ all-features = true
 
 [features]
 default = ["backtrace"]
-pool = ["libc"]
 test-support = ["ctor"]
 
 [dependencies]
 ipc-channel = "0.13.0"
 serde = { version = "1.0.104", features = ["derive"] }
 backtrace = { version = "0.3.43", optional = true, features = ["serde"] }
-libc = { version = "0.2.66", optional = true }
+libc = "0.2.66"
 ctor = { version = "0.1.12", optional = true }
-
-[[example]]
-name = "pool"
-required-features = ["pool"]
 
 [[example]]
 name = "panic"
@@ -41,4 +36,4 @@ required-features = ["test-support"]
 
 [[test]]
 name = "test_pool"
-required-features = ["test-support", "pool"]
+required-features = ["test-support"]
