@@ -3,6 +3,8 @@ use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::{env, mem, process};
 
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
@@ -10,12 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::{assert_initialized, MarshalledCall, ENV_NAME};
 use crate::error::{Panic, SpawnError};
-
-#[cfg(feature = "pool")]
-use {
-    crate::pool::ScheduledTask,
-    std::sync::{mpsc, Arc},
-};
+use crate::pool::PooledHandle;
 
 /// Process factory, which can be used in order to configure the properties
 /// of a process being created.
@@ -176,23 +173,89 @@ impl Builder {
         args_tx.send(args)?;
 
         tx.send(MarshalledCall::marshal::<F, A, R>(args_rx, return_tx))?;
-        Ok(JoinHandleInner::Process {
+        Ok(JoinHandleInner::Process(ProcessHandle {
             recv: return_rx,
+            state: Arc::new(ProcessHandleState::new(Some(process.id()))),
             process,
-        })
+        }))
+    }
+}
+
+pub struct ProcessHandleState {
+    pub exited: AtomicBool,
+    pub pid: AtomicUsize,
+}
+
+impl ProcessHandleState {
+    pub fn new(pid: Option<u32>) -> ProcessHandleState {
+        ProcessHandleState {
+            exited: AtomicBool::new(false),
+            pid: AtomicUsize::new(pid.unwrap_or(0) as usize),
+        }
+    }
+
+    pub fn pid(&self) -> Option<u32> {
+        match self.pid.load(Ordering::SeqCst) {
+            0 => None,
+            x => Some(x as u32),
+        }
+    }
+
+    pub fn kill(&self) {
+        if !self.exited.load(Ordering::SeqCst) {
+            self.exited.store(true, Ordering::SeqCst);
+            if let Some(pid) = self.pid() {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGKILL);
+                }
+            }
+        }
+    }
+}
+
+pub struct ProcessHandle<T> {
+    recv: IpcReceiver<Result<T, Panic>>,
+    process: process::Child,
+    state: Arc<ProcessHandleState>,
+}
+
+impl<T: Serialize + for<'de> Deserialize<'de>> ProcessHandle<T> {
+    pub fn state(&self) -> &Arc<ProcessHandleState> {
+        &self.state
+    }
+
+    pub fn join(&mut self) -> Result<T, SpawnError> {
+        let rv = self.recv.recv()?.map_err(Into::into);
+        self.state.exited.store(true, Ordering::SeqCst);
+        rv
+    }
+
+    pub fn kill(&mut self) -> Result<(), SpawnError> {
+        if self.state.exited.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let rv = self.process.kill().map_err(Into::into);
+        self.process.wait().ok();
+        self.state.exited.store(true, Ordering::SeqCst);
+        rv
+    }
+
+    pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
+        self.process.stdin.as_mut()
+    }
+
+    pub fn stdout(&mut self) -> Option<&mut ChildStdout> {
+        self.process.stdout.as_mut()
+    }
+
+    pub fn stderr(&mut self) -> Option<&mut ChildStderr> {
+        self.process.stderr.as_mut()
     }
 }
 
 pub enum JoinHandleInner<T> {
-    Process {
-        recv: IpcReceiver<Result<T, Panic>>,
-        process: process::Child,
-    },
-    #[cfg(feature = "pool")]
-    Pooled {
-        waiter_rx: mpsc::Receiver<Result<T, SpawnError>>,
-        task: Arc<ScheduledTask>,
-    },
+    Process(ProcessHandle<T>),
+    Pooled(PooledHandle<T>),
 }
 
 /// An owned permission to join on a process (block on its termination).
@@ -204,16 +267,11 @@ pub struct JoinHandle<T> {
 }
 
 impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
-    /// Returns the process id of the inner process.
-    ///
-    /// If a process pool is being used this might return `None` if the
-    /// call was not yet delegated to a process.
-    pub fn pid(&self) -> Option<u32> {
+    pub(crate) fn process_handle_state(&self) -> Option<&Arc<ProcessHandleState>> {
         match self.inner {
-            Ok(JoinHandleInner::Process { ref process, .. }) => Some(process.id()),
-            #[cfg(feature = "pool")]
-            Ok(JoinHandleInner::Pooled { ref task, .. }) => task.pid(),
-            Err(_) => None,
+            Ok(JoinHandleInner::Process(ref handle)) => Some(handle.state()),
+            Ok(JoinHandleInner::Pooled(_)) => None,
+            Err(..) => None,
         }
     }
 
@@ -222,16 +280,8 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
     /// If the join handle was created from a pool the join is virtualized.
     pub fn join(self) -> Result<T, SpawnError> {
         match self.inner {
-            Ok(JoinHandleInner::Process { recv, .. }) => match recv.recv()? {
-                Ok(rv) => Ok(rv),
-                Err(panic) => Err(panic.into()),
-            },
-            #[cfg(feature = "pool")]
-            Ok(JoinHandleInner::Pooled { waiter_rx, .. }) => match waiter_rx.recv() {
-                Ok(Ok(rv)) => Ok(rv),
-                Ok(Err(err)) => Err(err),
-                Err(..) => unimplemented!(),
-            },
+            Ok(JoinHandleInner::Process(mut handle)) => handle.join(),
+            Ok(JoinHandleInner::Pooled(mut handle)) => handle.join(),
             Err(err) => Err(err),
         }
     }
@@ -244,18 +294,10 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
     /// * if the call was already picked up by the process, the process will
     ///   be killed.
     /// * if the call was not yet scheduled to a process it will be cancelled.
-    pub fn kill(self) -> std::io::Result<()> {
+    pub fn kill(&mut self) -> Result<(), SpawnError> {
         match self.inner {
-            Ok(JoinHandleInner::Process { mut process, .. }) => {
-                let rv = process.kill().map_err(Into::into);
-                process.wait().ok();
-                rv
-            }
-            #[cfg(feature = "pool")]
-            Ok(JoinHandleInner::Pooled { ref task, .. }) => {
-                task.kill();
-                Ok(())
-            }
+            Ok(JoinHandleInner::Process(ref mut handle)) => handle.kill(),
+            Ok(JoinHandleInner::Pooled(ref mut handle)) => handle.kill(),
             Err(_) => Ok(()),
         }
     }
@@ -263,10 +305,7 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
     /// Fetch the `stdin` handle if it has been captured
     pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
         match self.inner {
-            Ok(JoinHandleInner::Process {
-                ref mut process, ..
-            }) => process.stdin.as_mut(),
-            #[cfg(feature = "pool")]
+            Ok(JoinHandleInner::Process(ref mut process)) => process.stdin(),
             Ok(JoinHandleInner::Pooled { .. }) => None,
             Err(_) => None,
         }
@@ -275,10 +314,7 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
     /// Fetch the `stdout` handle if it has been captured
     pub fn stdout(&mut self) -> Option<&mut ChildStdout> {
         match self.inner {
-            Ok(JoinHandleInner::Process {
-                ref mut process, ..
-            }) => process.stdout.as_mut(),
-            #[cfg(feature = "pool")]
+            Ok(JoinHandleInner::Process(ref mut process)) => process.stdout(),
             Ok(JoinHandleInner::Pooled { .. }) => None,
             Err(_) => None,
         }
@@ -287,10 +323,7 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
     /// Fetch the `stderr` handle if it has been captured
     pub fn stderr(&mut self) -> Option<&mut ChildStderr> {
         match self.inner {
-            Ok(JoinHandleInner::Process {
-                ref mut process, ..
-            }) => process.stderr.as_mut(),
-            #[cfg(feature = "pool")]
+            Ok(JoinHandleInner::Process(ref mut process)) => process.stderr(),
             Ok(JoinHandleInner::Pooled { .. }) => None,
             Err(_) => None,
         }

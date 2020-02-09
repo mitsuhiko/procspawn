@@ -67,7 +67,6 @@ pub use self::core::{init, ProcConfig};
 pub use self::error::{Panic, SpawnError};
 pub use self::proc::{Builder, JoinHandle};
 
-#[cfg(feature = "pool")]
 pub use self::pool::{Pool, PoolBuilder};
 
 /// Spawn a new process to run a function with some payload.
