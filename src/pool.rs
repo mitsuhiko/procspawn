@@ -36,11 +36,18 @@ pub struct PooledHandle<T> {
     shared: Arc<PooledHandleState>,
 }
 
-impl<T: Serialize + for<'de> Deserialize<'de>> PooledHandle<T> {
+impl<T> PooledHandle<T> {
     pub fn process_handle_state(&self) -> Option<Arc<ProcessHandleState>> {
         self.shared.process_handle_state.lock().unwrap().clone()
     }
 
+    pub fn kill(&mut self) -> Result<(), SpawnError> {
+        self.shared.kill();
+        Ok(())
+    }
+}
+
+impl<T: Serialize + for<'de> Deserialize<'de>> PooledHandle<T> {
     pub fn join(&mut self) -> Result<T, SpawnError> {
         match self.waiter_rx.recv() {
             Ok(Ok(rv)) => Ok(rv),
@@ -61,11 +68,6 @@ impl<T: Serialize + for<'de> Deserialize<'de>> PooledHandle<T> {
                 Err(io::Error::new(io::ErrorKind::BrokenPipe, "process went away").into())
             }
         }
-    }
-
-    pub fn kill(&mut self) -> Result<(), SpawnError> {
-        self.shared.kill();
-        Ok(())
     }
 }
 
