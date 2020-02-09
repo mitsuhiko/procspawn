@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::io;
+use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
@@ -93,16 +94,40 @@ pub struct Pool {
     shared: Arc<PoolShared>,
 }
 
+impl fmt::Debug for Pool {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Pool")
+            .field("size", &self.size())
+            .finish()
+    }
+}
+
 impl Pool {
     /// Creates the default pool.
     pub fn new(size: usize) -> Result<Pool, SpawnError> {
         Pool::builder(size).build()
     }
 
-    /// Creats a builder to customize pool creation.
+    /// Creates a builder to customize pool creation.
     pub fn builder(size: usize) -> PoolBuilder {
         PoolBuilder::new(size)
     }
+
+    /// Returns the size of the pool.
+    pub fn size(&self) -> usize {
+        self.shared.monitors.lock().unwrap().len()
+    }
+
+    /// Returns the number of jobs waiting to executed in the pool.
+    pub fn queued_count(&self) -> usize {
+        self.shared.queued_count.load(Ordering::Relaxed)
+    }
+
+    /// Returns the number of currently active threads.
+    pub fn active_count(&self) -> usize {
+        self.shared.active_count.load(Ordering::SeqCst)
+    }
+
 
     /// Spawns a closure into a process of the pool.
     pub fn spawn<
@@ -210,6 +235,7 @@ impl Pool {
 /// Utility to configure a pool.
 ///
 /// This requires the `pool` feature.
+#[derive(Debug)]
 pub struct PoolBuilder {
     size: usize,
     vars: HashMap<OsString, OsString>,
