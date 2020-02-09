@@ -65,6 +65,7 @@ fn test_overload() {
         }));
     }
 
+    thread::sleep(Duration::from_millis(100));
     for (idx, handle) in handles.iter().enumerate() {
         assert_eq!(handle.pid().is_some(), idx < 2);
     }
