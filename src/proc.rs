@@ -224,7 +224,11 @@ pub struct ProcessHandle<T> {
 
 fn is_ipc_timeout(err: &ipc_channel::Error) -> bool {
     if let ipc_channel::ErrorKind::Io(ref io) = &**err {
-        io.kind() == io::ErrorKind::TimedOut
+        match io.kind() {
+            io::ErrorKind::TimedOut => true,
+            io::ErrorKind::WouldBlock => true,
+            _ => false,
+        }
     } else {
         false
     }
