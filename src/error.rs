@@ -1,5 +1,5 @@
 use std::fmt;
-use std::io::Error as IoError;
+use std::io;
 
 use ipc_channel::Error as IpcError;
 use serde::{Deserialize, Serialize};
@@ -75,9 +75,10 @@ pub struct SpawnError {
 #[derive(Debug)]
 enum SpawnErrorKind {
     Ipc(IpcError),
-    Io(IoError),
+    Io(io::Error),
     Panic(Panic),
     Cancelled,
+    TimedOut,
 }
 
 impl SpawnError {
@@ -90,9 +91,33 @@ impl SpawnError {
         }
     }
 
+    /// True if this error indicates a cancellation.
+    pub fn is_cancellation(&self) -> bool {
+        if let SpawnErrorKind::Cancelled = self.kind {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// True if this error indicates a timeout
+    pub fn is_timeout(&self) -> bool {
+        if let SpawnErrorKind::TimedOut = self.kind {
+            true
+        } else {
+            false
+        }
+    }
+
     pub(crate) fn new_cancelled() -> SpawnError {
         SpawnError {
             kind: SpawnErrorKind::Cancelled,
+        }
+    }
+
+    pub(crate) fn new_timeout() -> SpawnError {
+        SpawnError {
+            kind: SpawnErrorKind::TimedOut,
         }
     }
 }
@@ -104,6 +129,7 @@ impl std::error::Error for SpawnError {
             SpawnErrorKind::Io(ref err) => Some(&*err),
             SpawnErrorKind::Panic(_) => None,
             SpawnErrorKind::Cancelled => None,
+            SpawnErrorKind::TimedOut => None,
         }
     }
 }
@@ -115,6 +141,7 @@ impl fmt::Display for SpawnError {
             SpawnErrorKind::Io(_) => write!(f, "process spawn error: i/o error"),
             SpawnErrorKind::Panic(ref p) => write!(f, "process spawn error: panic: {}", p),
             SpawnErrorKind::Cancelled => write!(f, "process spawn error: call cancelled"),
+            SpawnErrorKind::TimedOut => write!(f, "process spawn error: timed out"),
         }
     }
 }
@@ -127,8 +154,8 @@ impl From<IpcError> for SpawnError {
     }
 }
 
-impl From<IoError> for SpawnError {
-    fn from(err: IoError) -> SpawnError {
+impl From<io::Error> for SpawnError {
+    fn from(err: io::Error) -> SpawnError {
         SpawnError {
             kind: SpawnErrorKind::Io(err),
         }

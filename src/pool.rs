@@ -4,6 +4,7 @@ use std::io;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use ipc_channel::ipc;
 use serde::{Deserialize, Serialize};
@@ -45,6 +46,20 @@ impl<T: Serialize + for<'de> Deserialize<'de>> PooledHandle<T> {
             Ok(Ok(rv)) => Ok(rv),
             Ok(Err(err)) => Err(err),
             Err(..) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "process went away").into()),
+        }
+    }
+
+    pub fn join_timeout(&mut self, timeout: Duration) -> Result<T, SpawnError> {
+        match self.waiter_rx.recv_timeout(timeout) {
+            Ok(Ok(rv)) => Ok(rv),
+            Ok(Err(err)) => Err(err),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                self.kill().ok();
+                Err(SpawnError::new_timeout())
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err(io::Error::new(io::ErrorKind::BrokenPipe, "process went away").into())
+            }
         }
     }
 
