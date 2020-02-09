@@ -47,7 +47,7 @@ impl ProcConfig {
     }
 
     /// Attaches a callback that is used to initializes all processes.
-    pub fn config_callback<F: FnOnce() + 'static>(mut self, f: F) -> ProcConfig {
+    pub fn config_callback<F: FnOnce() + 'static>(&mut self, f: F) -> &mut Self {
         self.callback = Some(Box::new(f));
         self
     }
@@ -56,7 +56,7 @@ impl ProcConfig {
     ///
     /// The default behavior is that panics are caught and that a panic handler
     /// is installed.
-    pub fn panic_handling(mut self, enabled: bool) -> ProcConfig {
+    pub fn panic_handling(&mut self, enabled: bool) -> &mut Self {
         self.panic_handling = enabled;
         self
     }
@@ -68,20 +68,20 @@ impl ProcConfig {
     ///
     /// This requires the `backtrace` feature.
     #[cfg(feature = "backtrace")]
-    pub fn capture_backtraces(mut self, enabled: bool) -> ProcConfig {
+    pub fn capture_backtraces(&mut self, enabled: bool) -> &mut Self {
         self.capture_backtraces = enabled;
         self
     }
 
     /// Controls whether backtraces should be resolved.
     #[cfg(feature = "backtrace")]
-    pub fn resolve_backtraces(mut self, enabled: bool) -> ProcConfig {
+    pub fn resolve_backtraces(&mut self, enabled: bool) -> &mut Self {
         self.resolve_backtraces = enabled;
         self
     }
 
     /// Consumes the config and initializes the process.
-    pub fn init(mut self) {
+    pub fn init(&mut self) {
         mark_initialized();
 
         if let Ok(token) = env::var(ENV_NAME) {
