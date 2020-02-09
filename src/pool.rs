@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fmt;
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -12,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::MarshalledCall;
 use crate::error::SpawnError;
-use crate::proc::{Builder, JoinHandle, JoinHandleInner, ProcessHandleState};
+use crate::proc::{Builder, JoinHandle, JoinHandleInner, ProcCommon, ProcessHandleState};
 
 type WaitFunc = Box<dyn FnOnce() -> bool + Send>;
 type NotifyErrorFunc = Box<dyn FnMut(SpawnError) + Send>;
@@ -239,7 +238,7 @@ impl Pool {
 #[derive(Debug)]
 pub struct PoolBuilder {
     size: usize,
-    vars: HashMap<OsString, OsString>,
+    common: ProcCommon,
 }
 
 impl PoolBuilder {
@@ -251,54 +250,11 @@ impl PoolBuilder {
     fn new(size: usize) -> PoolBuilder {
         PoolBuilder {
             size,
-            vars: std::env::vars_os().collect(),
+            common: ProcCommon::default(),
         }
     }
 
-    /// Set an environment variable in the spawned process.
-    ///
-    /// Equivalent to `Command::env`
-    pub fn env<K, V>(&mut self, key: K, val: V) -> &mut Self
-    where
-        K: AsRef<OsStr>,
-        V: AsRef<OsStr>,
-    {
-        self.vars
-            .insert(key.as_ref().to_owned(), val.as_ref().to_owned());
-        self
-    }
-
-    /// Set environment variables in the spawned process.
-    ///
-    /// Equivalent to `Command::envs`
-    pub fn envs<I, K, V>(&mut self, vars: I) -> &mut Self
-    where
-        I: IntoIterator<Item = (K, V)>,
-        K: AsRef<OsStr>,
-        V: AsRef<OsStr>,
-    {
-        self.vars.extend(
-            vars.into_iter()
-                .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned())),
-        );
-        self
-    }
-
-    /// Removes an environment variable in the spawned process.
-    ///
-    /// Equivalent to `Command::env_remove`
-    pub fn env_remove<K: AsRef<OsStr>>(&mut self, key: K) -> &mut Self {
-        self.vars.remove(key.as_ref());
-        self
-    }
-
-    /// Clears all environment variables in the spawned process.
-    ///
-    /// Equivalent to `Command::env_clear`
-    pub fn env_clear(&mut self) -> &mut Self {
-        self.vars.clear();
-        self
-    }
+    define_common_methods!();
 
     /// Creates the pool.
     pub fn build(&mut self) -> Result<Pool, SpawnError> {
@@ -380,13 +336,13 @@ fn spawn_worker(
     let current_call_tx = Arc::new(Mutex::new(None::<ipc::IpcSender<MarshalledCall>>));
 
     let spawn = Arc::new(Mutex::new({
-        let vars = builder.vars.clone();
+        let common = builder.common.clone();
         let join_handle = join_handle.clone();
         let current_call_tx = current_call_tx.clone();
         move || {
             let (call_tx, call_rx) = ipc::channel::<MarshalledCall>().unwrap();
             *join_handle.lock().unwrap() =
-                Some(Builder::new().envs(vars.clone()).spawn(call_rx, |rx| {
+                Some(Builder::new().common(common.clone()).spawn(call_rx, |rx| {
                     while let Ok(call) = rx.recv() {
                         // we never want panic handling here as we're going to
                         // defer this to the process'.

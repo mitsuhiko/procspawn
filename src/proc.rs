@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{env, mem, process};
 use std::{io, thread};
@@ -17,16 +17,138 @@ use crate::core::{assert_initialized, MarshalledCall, ENV_NAME};
 use crate::error::{PanicInfo, SpawnError};
 use crate::pool::PooledHandle;
 
+type PreExecFunc = dyn FnMut() -> io::Result<()> + Send + Sync + 'static;
+
+#[derive(Clone)]
+pub struct ProcCommon {
+    pub vars: HashMap<OsString, OsString>,
+    #[cfg(unix)]
+    pub uid: Option<u32>,
+    #[cfg(unix)]
+    pub gid: Option<u32>,
+    #[cfg(unix)]
+    pub pre_exec: Option<Arc<Mutex<Box<PreExecFunc>>>>,
+}
+
+impl fmt::Debug for ProcCommon {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ProcCommon")
+            .field("vars", &self.vars)
+            .finish()
+    }
+}
+
+impl Default for ProcCommon {
+    fn default() -> ProcCommon {
+        ProcCommon {
+            vars: std::env::vars_os().collect(),
+            #[cfg(unix)]
+            uid: None,
+            #[cfg(unix)]
+            gid: None,
+            #[cfg(unix)]
+            pre_exec: None,
+        }
+    }
+}
+
 /// Process factory, which can be used in order to configure the properties
 /// of a process being created.
 ///
 /// Methods can be chained on it in order to configure it.
 #[derive(Debug, Default)]
 pub struct Builder {
-    pub(crate) stdin: Option<Stdio>,
-    pub(crate) stdout: Option<Stdio>,
-    pub(crate) stderr: Option<Stdio>,
-    pub(crate) vars: HashMap<OsString, OsString>,
+    stdin: Option<Stdio>,
+    stdout: Option<Stdio>,
+    stderr: Option<Stdio>,
+    common: ProcCommon,
+}
+
+macro_rules! define_common_methods {
+    () => {
+        /// Set an environment variable in the spawned process.
+        ///
+        /// Equivalent to `Command::env`
+        pub fn env<K, V>(&mut self, key: K, val: V) -> &mut Self
+        where
+            K: AsRef<OsStr>,
+            V: AsRef<OsStr>,
+        {
+            self.common.vars
+                .insert(key.as_ref().to_owned(), val.as_ref().to_owned());
+            self
+        }
+
+        /// Set environment variables in the spawned process.
+        ///
+        /// Equivalent to `Command::envs`
+        pub fn envs<I, K, V>(&mut self, vars: I) -> &mut Self
+        where
+            I: IntoIterator<Item = (K, V)>,
+            K: AsRef<OsStr>,
+            V: AsRef<OsStr>,
+        {
+            self.common.vars.extend(
+                vars.into_iter()
+                    .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned())),
+            );
+            self
+        }
+
+        /// Removes an environment variable in the spawned process.
+        ///
+        /// Equivalent to `Command::env_remove`
+        pub fn env_remove<K: AsRef<OsStr>>(&mut self, key: K) -> &mut Self {
+            self.common.vars.remove(key.as_ref());
+            self
+        }
+
+        /// Clears all environment variables in the spawned process.
+        ///
+        /// Equivalent to `Command::env_clear`
+        pub fn env_clear(&mut self) -> &mut Self {
+            self.common.vars.clear();
+            self
+        }
+
+        /// Sets the child process's user ID. This translates to a
+        /// `setuid` call in the child process. Failure in the `setuid`
+        /// call will cause the spawn to fail.
+        ///
+        /// Unix-specific extension only available on unix.
+        ///
+        /// Equivalent to `std::os::unix::process::CommandExt::uid`
+        #[cfg(unix)]
+        pub fn uid(&mut self, id: u32) -> &mut Self {
+            self.common.uid = Some(id);
+            self
+        }
+
+        /// Similar to `uid`, but sets the group ID of the child process. This has
+        /// the same semantics as the `uid` field.
+        ///
+        /// Unix-specific extension only available on unix.
+        ///
+        /// Equivalent to `std::os::unix::process::CommandExt::gid`
+        #[cfg(unix)]
+        pub fn gid(&mut self, id: u32) -> &mut Self {
+            self.common.gid = Some(id);
+            self
+        }
+
+        /// Schedules a closure to be run just before the `exec` function is
+        /// invoked.
+        ///
+        /// Equivalent to `std::os::unix::process::CommandExt::pre_exec`
+        #[cfg(unix)]
+        pub unsafe fn pre_exec<F>(&mut self, f: F) -> &mut Self
+        where
+            F: FnMut() -> io::Result<()> + Send + Sync + 'static
+        {
+            self.common.pre_exec = Some(Arc::new(Mutex::new(Box::new(f))));
+            self
+        }
+    }
 }
 
 impl Builder {
@@ -37,54 +159,16 @@ impl Builder {
             stdin: None,
             stdout: None,
             stderr: None,
-            vars: std::env::vars_os().collect(),
+            common: ProcCommon::default(),
         }
     }
 
-    /// Set an environment variable in the spawned process.
-    ///
-    /// Equivalent to `Command::env`
-    pub fn env<K, V>(&mut self, key: K, val: V) -> &mut Self
-    where
-        K: AsRef<OsStr>,
-        V: AsRef<OsStr>,
-    {
-        self.vars
-            .insert(key.as_ref().to_owned(), val.as_ref().to_owned());
+    pub(crate) fn common(&mut self, common: ProcCommon) -> &mut Self {
+        self.common = common;
         self
     }
 
-    /// Set environment variables in the spawned process.
-    ///
-    /// Equivalent to `Command::envs`
-    pub fn envs<I, K, V>(&mut self, vars: I) -> &mut Self
-    where
-        I: IntoIterator<Item = (K, V)>,
-        K: AsRef<OsStr>,
-        V: AsRef<OsStr>,
-    {
-        self.vars.extend(
-            vars.into_iter()
-                .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned())),
-        );
-        self
-    }
-
-    /// Removes an environment variable in the spawned process.
-    ///
-    /// Equivalent to `Command::env_remove`
-    pub fn env_remove<K: AsRef<OsStr>>(&mut self, key: K) -> &mut Self {
-        self.vars.remove(key.as_ref());
-        self
-    }
-
-    /// Clears all environment variables in the spawned process.
-    ///
-    /// Equivalent to `Command::env_clear`
-    pub fn env_clear(&mut self) -> &mut Self {
-        self.vars.clear();
-        self
-    }
+    define_common_methods!();
 
     /// Captures the `stdin` of the spawned process, allowing you to manually
     /// send data via `JoinHandle::stdin`
@@ -150,8 +234,25 @@ impl Builder {
             env::current_exe()?
         };
         let mut child = process::Command::new(me);
-        child.envs(self.vars.into_iter());
+        child.envs(self.common.vars.into_iter());
         child.env(ENV_NAME, token);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            if let Some(id) = self.common.uid {
+                child.uid(id);
+            }
+            if let Some(id) = self.common.gid {
+                child.gid(id);
+            }
+            if let Some(ref func) = self.common.pre_exec {
+                let func = func.clone();
+                unsafe {
+                    child.pre_exec(move || (&mut *func.lock().unwrap())());
+                }
+            }
+        }
 
         #[cfg(feature = "test-support")]
         {
