@@ -11,7 +11,7 @@ use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
 use serde::{Deserialize, Serialize};
 
 use crate::core::{assert_initialized, MarshalledCall, ENV_NAME};
-use crate::error::{Panic, SpawnError};
+use crate::error::{PanicInfo, SpawnError};
 use crate::pool::PooledHandle;
 
 /// Process factory, which can be used in order to configure the properties
@@ -169,7 +169,7 @@ impl Builder {
         let (_rx, tx) = server.accept()?;
 
         let (args_tx, args_rx) = ipc::channel()?;
-        let (return_tx, return_rx) = ipc::channel::<Result<R, Panic>>()?;
+        let (return_tx, return_rx) = ipc::channel::<Result<R, PanicInfo>>()?;
         args_tx.send(args)?;
 
         tx.send(MarshalledCall::marshal::<F, A, R>(args_rx, return_tx))?;
@@ -215,7 +215,7 @@ impl ProcessHandleState {
 }
 
 pub struct ProcessHandle<T> {
-    recv: IpcReceiver<Result<T, Panic>>,
+    recv: IpcReceiver<Result<T, PanicInfo>>,
     process: process::Child,
     state: Arc<ProcessHandleState>,
 }

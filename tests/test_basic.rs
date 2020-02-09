@@ -22,6 +22,11 @@ fn test_panic() {
     let panic_info = err.panic_info().unwrap();
     assert_eq!(panic_info.message(), "something went wrong");
     assert!(panic_info.backtrace().is_some());
+
+    let loc = panic_info.location().unwrap();
+    assert_eq!(loc.line(), 19);
+    assert_eq!(loc.column(), 33);
+    assert!(loc.file().contains("test_basic.rs"));
 }
 
 #[test]

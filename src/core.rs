@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use ipc_channel::ipc::{self, IpcReceiver, IpcSender, OpaqueIpcReceiver, OpaqueIpcSender};
 use serde::{Deserialize, Serialize};
 
-use crate::error::Panic;
+use crate::error::PanicInfo;
 use crate::panic::{init_panic_hook, reset_panic_info, take_panic, BacktraceCapture};
 
 pub const ENV_NAME: &str = "__PROCSPAWN_CONTENT_PROCESS_ID";
@@ -154,7 +154,7 @@ impl MarshalledCall {
     /// Marshalls the call.
     pub fn marshal<F, A, R>(
         args_receiver: IpcReceiver<A>,
-        return_sender: IpcSender<Result<R, Panic>>,
+        return_sender: IpcSender<Result<R, PanicInfo>>,
     ) -> MarshalledCall
     where
         F: FnOnce(A) -> R,
