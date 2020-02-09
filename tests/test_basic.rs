@@ -67,3 +67,21 @@ fn test_nested() {
     println!("4");
     assert_eq!(five, 5);
 }
+
+#[test]
+fn test_timeout() {
+    let handle = spawn((), |()| {
+        thread::sleep(Duration::from_secs(10));
+    });
+
+    let err = handle.join_timeout(Duration::from_millis(100)).unwrap_err();
+    assert!(err.is_timeout());
+
+    let handle = spawn((), |()| {
+        thread::sleep(Duration::from_millis(100));
+        42
+    });
+
+    let val = handle.join_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(val, 42);
+}

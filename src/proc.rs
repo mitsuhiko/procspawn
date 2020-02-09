@@ -5,7 +5,9 @@ use std::process::Stdio;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use std::{env, mem, process};
+use std::{io, thread};
 
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
 use serde::{Deserialize, Serialize};
@@ -220,6 +222,18 @@ pub struct ProcessHandle<T> {
     state: Arc<ProcessHandleState>,
 }
 
+fn is_ipc_timeout(err: &ipc_channel::Error) -> bool {
+    if let ipc_channel::ErrorKind::Io(ref io) = &**err {
+        match io.kind() {
+            io::ErrorKind::TimedOut => true,
+            io::ErrorKind::WouldBlock => true,
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
 impl<T: Serialize + for<'de> Deserialize<'de>> ProcessHandle<T> {
     pub fn state(&self) -> Arc<ProcessHandleState> {
         self.state.clone()
@@ -227,6 +241,32 @@ impl<T: Serialize + for<'de> Deserialize<'de>> ProcessHandle<T> {
 
     pub fn join(&mut self) -> Result<T, SpawnError> {
         let rv = self.recv.recv()?.map_err(Into::into);
+        self.state.exited.store(true, Ordering::SeqCst);
+        rv
+    }
+
+    pub fn join_timeout(&mut self, timeout: Duration) -> Result<T, SpawnError> {
+        let deadline = match Instant::now().checked_add(timeout) {
+            Some(deadline) => deadline,
+            None => {
+                return Err(io::Error::new(io::ErrorKind::Other, "timeout out of bounds").into())
+            }
+        };
+        let mut to_sleep = Duration::from_millis(1);
+        let rv = loop {
+            match self.recv.try_recv() {
+                Ok(rv) => break rv.map_err(Into::into),
+                Err(err) if is_ipc_timeout(&err) => {
+                    if let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+                        thread::sleep(remaining.min(to_sleep));
+                        to_sleep *= 2;
+                    } else {
+                        return Err(SpawnError::new_timeout());
+                    }
+                }
+                Err(err) => return Err(err.into()),
+            }
+        };
         self.state.exited.store(true, Ordering::SeqCst);
         rv
     }
@@ -291,6 +331,15 @@ impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
         match self.inner {
             Ok(JoinHandleInner::Process(mut handle)) => handle.join(),
             Ok(JoinHandleInner::Pooled(mut handle)) => handle.join(),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Like `join` but with a timeout.
+    pub fn join_timeout(self, timeout: Duration) -> Result<T, SpawnError> {
+        match self.inner {
+            Ok(JoinHandleInner::Process(mut handle)) => handle.join_timeout(timeout),
+            Ok(JoinHandleInner::Pooled(mut handle)) => handle.join_timeout(timeout),
             Err(err) => Err(err),
         }
     }

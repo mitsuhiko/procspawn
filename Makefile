@@ -46,6 +46,7 @@ testall:
 	cargo run --all-features --example pool
 	cargo run --all-features --example simple
 	cargo run --all-features --example stdout
+	cargo run --all-features --example timeout
 .PHONY: testall
 
 readme:
