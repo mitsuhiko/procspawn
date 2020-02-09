@@ -181,6 +181,7 @@ impl Builder {
     }
 }
 
+#[derive(Debug)]
 pub struct ProcessHandleState {
     pub exited: AtomicBool,
     pub pid: AtomicUsize,
@@ -220,8 +221,8 @@ pub struct ProcessHandle<T> {
 }
 
 impl<T: Serialize + for<'de> Deserialize<'de>> ProcessHandle<T> {
-    pub fn state(&self) -> &Arc<ProcessHandleState> {
-        &self.state
+    pub fn state(&self) -> Arc<ProcessHandleState> {
+        self.state.clone()
     }
 
     pub fn join(&mut self) -> Result<T, SpawnError> {
@@ -267,12 +268,20 @@ pub struct JoinHandle<T> {
 }
 
 impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
-    pub(crate) fn process_handle_state(&self) -> Option<&Arc<ProcessHandleState>> {
+    pub(crate) fn process_handle_state(&self) -> Option<Arc<ProcessHandleState>> {
         match self.inner {
             Ok(JoinHandleInner::Process(ref handle)) => Some(handle.state()),
-            Ok(JoinHandleInner::Pooled(_)) => None,
+            Ok(JoinHandleInner::Pooled(ref handle)) => handle.process_handle_state(),
             Err(..) => None,
         }
+    }
+
+    /// Returns the process ID if available.
+    ///
+    /// The process ID is unavailable when pooled calls are not scheduled to
+    /// processes.
+    pub fn pid(&self) -> Option<u32> {
+        self.process_handle_state().and_then(|x| x.pid())
     }
 
     /// Wait for the child process to return a result.

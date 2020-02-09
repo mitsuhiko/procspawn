@@ -37,6 +37,7 @@ fn test_basic() {
 fn test_overload() {
     let pool = Pool::new(2).unwrap();
     let mut handles = vec![];
+    let mut with_pid = 0;
 
     for _ in 0..10 {
         handles.push(pool.spawn((), |()| {
@@ -45,9 +46,13 @@ fn test_overload() {
     }
 
     thread::sleep(Duration::from_millis(100));
-    for (idx, handle) in handles.iter().enumerate() {
-        assert_eq!(handle.pid().is_some(), idx < 2);
+    for handle in handles.iter() {
+        if handle.pid().is_some() {
+            with_pid += 1;
+        }
     }
+
+    assert_eq!(with_pid, 2);
 
     // kill the pool
     pool.kill();

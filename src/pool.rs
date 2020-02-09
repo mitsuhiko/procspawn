@@ -15,6 +15,7 @@ use crate::proc::{Builder, JoinHandle, JoinHandleInner, ProcessHandleState};
 type WaitFunc = Box<dyn FnOnce() -> bool + Send>;
 type NotifyErrorFunc = Box<dyn FnMut(SpawnError) + Send>;
 
+#[derive(Debug)]
 pub struct PooledHandleState {
     pub cancelled: AtomicBool,
     pub process_handle_state: Mutex<Option<Arc<ProcessHandleState>>>,
@@ -35,6 +36,10 @@ pub struct PooledHandle<T> {
 }
 
 impl<T: Serialize + for<'de> Deserialize<'de>> PooledHandle<T> {
+    pub fn process_handle_state(&self) -> Option<Arc<ProcessHandleState>> {
+        self.shared.process_handle_state.lock().unwrap().clone()
+    }
+
     pub fn join(&mut self) -> Result<T, SpawnError> {
         match self.waiter_rx.recv() {
             Ok(Ok(rv)) => Ok(rv),
@@ -402,8 +407,7 @@ fn spawn_worker(
                     err_func(SpawnError::new_cancelled());
                 } else {
                     if let Some(ref mut handle) = *join_handle.lock().unwrap() {
-                        *state.process_handle_state.lock().unwrap() =
-                            handle.process_handle_state().cloned();
+                        *state.process_handle_state.lock().unwrap() = handle.process_handle_state();
                     }
 
                     let mut restart = false;
@@ -421,11 +425,11 @@ fn spawn_worker(
                         }
                     }
 
-                    *state.process_handle_state.lock().unwrap() = None;
-
                     if !restart && !wait_func() {
                         restart = true;
                     }
+
+                    *state.process_handle_state.lock().unwrap() = None;
 
                     if restart {
                         check_for_restart(&mut err_func);
