@@ -204,7 +204,7 @@ impl Pool {
     }
 
     /// Joins and shuts down.
-    pub fn shutdown(self) {
+    pub fn shutdown(&self) {
         if !self.shared.dead.load(Ordering::SeqCst) {
             self.join();
             self.kill();
