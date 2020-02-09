@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fmt;
 use std::io;
+use std::process;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::MarshalledCall;
 use crate::error::SpawnError;
-use crate::proc::{Builder, JoinHandle, JoinHandleInner, ProcessHandleState};
+use crate::proc::{Builder, JoinHandle, JoinHandleInner, ProcCommon, ProcessHandleState};
 
 type WaitFunc = Box<dyn FnOnce() -> bool + Send>;
 type NotifyErrorFunc = Box<dyn FnMut(SpawnError) + Send>;
@@ -239,7 +239,10 @@ impl Pool {
 #[derive(Debug)]
 pub struct PoolBuilder {
     size: usize,
-    vars: HashMap<OsString, OsString>,
+    disable_stdin: bool,
+    disable_stdout: bool,
+    disable_stderr: bool,
+    common: ProcCommon,
 }
 
 impl PoolBuilder {
@@ -251,52 +254,30 @@ impl PoolBuilder {
     fn new(size: usize) -> PoolBuilder {
         PoolBuilder {
             size,
-            vars: std::env::vars_os().collect(),
+            disable_stdin: false,
+            disable_stdout: false,
+            disable_stderr: false,
+            common: ProcCommon::default(),
         }
     }
 
-    /// Set an environment variable in the spawned process.
-    ///
-    /// Equivalent to `Command::env`
-    pub fn env<K, V>(&mut self, key: K, val: V) -> &mut Self
-    where
-        K: AsRef<OsStr>,
-        V: AsRef<OsStr>,
-    {
-        self.vars
-            .insert(key.as_ref().to_owned(), val.as_ref().to_owned());
+    define_common_methods!();
+
+    /// Redirects stdin to `/dev/null`.
+    pub fn disable_stdin(&mut self) -> &mut Self {
+        self.disable_stdin = true;
         self
     }
 
-    /// Set environment variables in the spawned process.
-    ///
-    /// Equivalent to `Command::envs`
-    pub fn envs<I, K, V>(&mut self, vars: I) -> &mut Self
-    where
-        I: IntoIterator<Item = (K, V)>,
-        K: AsRef<OsStr>,
-        V: AsRef<OsStr>,
-    {
-        self.vars.extend(
-            vars.into_iter()
-                .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned())),
-        );
+    /// Redirects stdout to `/dev/null`.
+    pub fn disable_stdout(&mut self) -> &mut Self {
+        self.disable_stdout = true;
         self
     }
 
-    /// Removes an environment variable in the spawned process.
-    ///
-    /// Equivalent to `Command::env_remove`
-    pub fn env_remove<K: AsRef<OsStr>>(&mut self, key: K) -> &mut Self {
-        self.vars.remove(key.as_ref());
-        self
-    }
-
-    /// Clears all environment variables in the spawned process.
-    ///
-    /// Equivalent to `Command::env_clear`
-    pub fn env_clear(&mut self) -> &mut Self {
-        self.vars.clear();
+    /// Redirects stderr to `/dev/null`.
+    pub fn disable_stderr(&mut self) -> &mut Self {
+        self.disable_stderr = true;
         self
     }
 
@@ -380,19 +361,32 @@ fn spawn_worker(
     let current_call_tx = Arc::new(Mutex::new(None::<ipc::IpcSender<MarshalledCall>>));
 
     let spawn = Arc::new(Mutex::new({
-        let vars = builder.vars.clone();
+        let disable_stdin = builder.disable_stdin;
+        let disable_stdout = builder.disable_stdout;
+        let disable_stderr = builder.disable_stderr;
+        let common = builder.common.clone();
         let join_handle = join_handle.clone();
         let current_call_tx = current_call_tx.clone();
         move || {
             let (call_tx, call_rx) = ipc::channel::<MarshalledCall>().unwrap();
-            *join_handle.lock().unwrap() =
-                Some(Builder::new().envs(vars.clone()).spawn(call_rx, |rx| {
-                    while let Ok(call) = rx.recv() {
-                        // we never want panic handling here as we're going to
-                        // defer this to the process'.
-                        call.call(false);
-                    }
-                }));
+            let mut builder = Builder::new();
+            builder.common(common.clone());
+            if disable_stdin {
+                builder.stdin(process::Stdio::null());
+            }
+            if disable_stdout {
+                builder.stdout(process::Stdio::null());
+            }
+            if disable_stderr {
+                builder.stderr(process::Stdio::null());
+            }
+            *join_handle.lock().unwrap() = Some(builder.spawn(call_rx, |rx| {
+                while let Ok(call) = rx.recv() {
+                    // we never want panic handling here as we're going to
+                    // defer this to the process'.
+                    call.call(false);
+                }
+            }));
             *current_call_tx.lock().unwrap() = Some(call_tx);
         }
     }));

@@ -53,11 +53,13 @@
 
 use serde::{Deserialize, Serialize};
 
+#[macro_use]
+mod proc;
+
 mod core;
 mod error;
 mod panic;
 mod pool;
-mod proc;
 
 #[doc(hidden)]
 pub mod testsupport;
