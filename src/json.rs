@@ -37,6 +37,8 @@ use serde::ser::{self, Serialize, Serializer};
 /// });
 /// let value = handle.join().unwrap().0;
 /// ```
+///
+/// This requires the `json` feature.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Json<T>(pub T);
 

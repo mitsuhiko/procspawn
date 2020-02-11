@@ -5,8 +5,11 @@
 //! explicitly passed as single argument which must be [`serde`](https://serde.rs/)
 //! serializable.  The return value from the spawned closure also must be
 //! serializable and can then be unwrapped from the returned join handle.
+//! If your function has data enclosed it will panic at runtime.
 //!
 //! ```rust,no_run
+//! // call this early in your main() function.  This is where all spawned
+//! // functions will be invoked.
 //! procspawn::init();
 //!
 //! let data = vec![1, 2, 3, 4];
@@ -21,21 +24,30 @@
 //! reliable way to intercept `main` in Rust it's necessary for you to call
 //! [`procspawn::init`](fn.init.html) at an early time in the program. The
 //! place where this will be called is the entrypoint for the subprocesses
-//! spawned.
+//! spawned.  The subprocess is invoked with the same arguments and environment
+//! variables by default.
 //!
 //! [`spawn`](fn.spawn.html) can pass arbitrary serializable data, including
 //! IPC senders and receivers from the [`ipc-channel`](https://crates.io/crates/ipc-channel)
 //! crate, down to the new process.
 //!
-//! ## Differences to Mitosis
+//! # Pools
 //!
-//! This crate is a fork of the `mitosis` crate with various differences in
-//! how they operate.  The most obvious one is that `procspawn` is very
-//! opinionated about error handling and will automatically capture and
-//! send backtraces across the process boundaries.  Additionally `procspawn`
-//! provides a process pool.
+//! The default way to spawn processes will start and stop processes constantly.
+//! For more uses it's a better idea to spawn a [`Pool`](struct.Pool.html)
+//! which will keep processes around for reuse.  Between calls the processes
+//! will stay around which also means the can keep state between calls if
+//! needed.
 //!
-//! ## Feature Flags
+//! # Panics
+//!
+//! By default panics are captured and serialized across process boundaries.
+//! This requires that the `backtrace` crate is used with serialization support.
+//! If you do not need this feature you can disable the `backtrace` crate and
+//! disable panic handling through the [`ProcConfig`](struct.ProcConfig.html)
+//! object.
+//!
+//! # Feature Flags
 //!
 //! The following feature flags exist:
 //!
@@ -48,7 +60,7 @@
 //! * `json`: enables optional JSON serialization.  For more information see
 //!   [Bincode Limitations](#bincode-limitations).
 //!
-//! ## Bincode Limitations
+//! # Bincode Limitations
 //!
 //! This crate uses [`bincode`](https://github.com/servo/bincode) internally
 //! for inter process communication.  Bincode currently has some limitations
@@ -57,7 +69,7 @@
 //! work around this you can enable the `json` feature and wrap affected objects
 //! in the [`Json`](struct.Json.html) wrapper to force JSON serialization.
 //!
-//! ## Platform Support
+//! # Platform Support
 //!
 //! Currently this crate only supports macOS and Linux because ipc-channel
 //! itself does not support Windows yet.
