@@ -61,9 +61,6 @@ mod error;
 mod panic;
 mod pool;
 
-#[cfg(feature = "json")]
-mod json;
-
 #[doc(hidden)]
 pub mod testsupport;
 
@@ -71,9 +68,6 @@ pub use self::core::{init, ProcConfig};
 pub use self::error::{Location, PanicInfo, SpawnError};
 pub use self::pool::{Pool, PoolBuilder};
 pub use self::proc::{Builder, JoinHandle};
-
-#[cfg(feature = "json")]
-pub use self::json::Json;
 
 /// Spawn a new process to run a function with some payload.
 pub fn spawn<
