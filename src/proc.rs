@@ -13,7 +13,7 @@ use std::{io, thread};
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
 use serde::{Deserialize, Serialize};
 
-use crate::core::{assert_initialized, MarshalledCall, ENV_NAME};
+use crate::core::{assert_initialized, should_pass_args, MarshalledCall, ENV_NAME};
 use crate::error::{PanicInfo, SpawnError};
 use crate::pool::PooledHandle;
 
@@ -259,9 +259,19 @@ impl Builder {
             }
         }
 
-        #[cfg(feature = "test-support")]
-        {
-            crate::testsupport::update_command_for_tests(&mut child);
+        let can_pass_args = {
+            #[cfg(feature = "test-support")]
+            {
+                !crate::testsupport::update_command_for_tests(&mut child)
+            }
+            #[cfg(not(feature = "test-support"))]
+            {
+                true
+            }
+        };
+
+        if can_pass_args && should_pass_args() {
+            child.args(env::args_os().skip(1));
         }
 
         if let Some(stdin) = self.stdin {

@@ -38,11 +38,14 @@ pub fn enable() {
     mark_initialized();
 }
 
-pub fn update_command_for_tests(cmd: &mut Command) {
+pub fn update_command_for_tests(cmd: &mut Command) -> bool {
     if TEST_MODE.load(Ordering::SeqCst) {
         cmd.arg("procspawn_test_helper");
         cmd.arg("--exact");
         cmd.arg("--test-threads=1");
         cmd.arg("-q");
+        true
+    } else {
+        false
     }
 }

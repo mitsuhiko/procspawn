@@ -12,11 +12,13 @@ use crate::panic::{init_panic_hook, reset_panic_info, take_panic, BacktraceCaptu
 
 pub const ENV_NAME: &str = "__PROCSPAWN_CONTENT_PROCESS_ID";
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
+static PASS_ARGS: AtomicBool = AtomicBool::new(false);
 
 /// Can be used to configure the process.
 pub struct ProcConfig {
     callback: Option<Box<dyn FnOnce()>>,
     panic_handling: bool,
+    pass_args: bool,
     #[cfg(feature = "backtrace")]
     capture_backtraces: bool,
     #[cfg(feature = "backtrace")]
@@ -28,6 +30,7 @@ impl Default for ProcConfig {
         ProcConfig {
             callback: None,
             panic_handling: true,
+            pass_args: true,
             #[cfg(feature = "backtrace")]
             capture_backtraces: true,
             #[cfg(feature = "backtrace")]
@@ -40,6 +43,10 @@ pub fn mark_initialized() {
     INITIALIZED.store(true, Ordering::SeqCst);
 }
 
+pub fn should_pass_args() -> bool {
+    PASS_ARGS.load(Ordering::SeqCst)
+}
+
 impl ProcConfig {
     /// Creates a default proc config.
     pub fn new() -> ProcConfig {
@@ -49,6 +56,14 @@ impl ProcConfig {
     /// Attaches a callback that is used to initializes all processes.
     pub fn config_callback<F: FnOnce() + 'static>(&mut self, f: F) -> &mut Self {
         self.callback = Some(Box::new(f));
+        self
+    }
+
+    /// Enables or disables argument passing.
+    ///
+    /// By default all arguments are forwarded to the spawned process.
+    pub fn pass_args(&mut self, enabled: bool) -> &mut Self {
+        self.pass_args = enabled;
         self
     }
 
@@ -83,6 +98,7 @@ impl ProcConfig {
     /// Consumes the config and initializes the process.
     pub fn init(&mut self) {
         mark_initialized();
+        PASS_ARGS.store(self.pass_args, Ordering::SeqCst);
 
         if let Ok(token) = env::var(ENV_NAME) {
             // permit nested invocations
