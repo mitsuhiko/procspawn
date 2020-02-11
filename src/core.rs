@@ -179,9 +179,7 @@ impl MarshalledCall {
         A: Serialize + for<'de> Deserialize<'de>,
         R: Serialize + for<'de> Deserialize<'de>,
     {
-        if mem::size_of::<F>() != 0 {
-            panic!("marshallig of closures that capture data is not supported!");
-        }
+        assert_empty_closure!(F);
         MarshalledCall {
             wrapper_offset: get_wrapper_offset::<F, A, R>(),
             args_receiver: args_receiver.to_opaque(),

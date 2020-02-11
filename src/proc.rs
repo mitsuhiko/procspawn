@@ -19,6 +19,17 @@ use crate::pool::PooledHandle;
 
 type PreExecFunc = dyn FnMut() -> io::Result<()> + Send + Sync + 'static;
 
+#[macro_export]
+macro_rules! assert_empty_closure {
+    ($func:ident) => {
+        assert_eq!(
+            std::mem::size_of::<$func>(),
+            0,
+            "marshalling of closures that capture data is not supported!"
+        );
+    };
+}
+
 #[derive(Clone)]
 pub struct ProcCommon {
     pub vars: HashMap<OsString, OsString>,
@@ -221,10 +232,7 @@ impl Builder {
         args: A,
         _: F,
     ) -> Result<JoinHandleInner<R>, SpawnError> {
-        if mem::size_of::<F>() != 0 {
-            panic!("procspawn cannot be called with closures that capture data!");
-        }
-
+        assert_empty_closure!(F);
         let (server, token) = IpcOneShotServer::<IpcSender<MarshalledCall>>::new()?;
         let me = if cfg!(target_os = "linux") {
             // will work even if exe is moved

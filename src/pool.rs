@@ -143,6 +143,7 @@ impl Pool {
         args: A,
         func: F,
     ) -> JoinHandle<R> {
+        assert_empty_closure!(F);
         self.assert_alive();
         let _func = func;
         let (args_tx, args_rx) = ipc::channel().unwrap();
