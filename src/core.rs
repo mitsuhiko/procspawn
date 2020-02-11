@@ -215,6 +215,8 @@ where
 {
     let function: F = mem::zeroed();
     let args = recv.to().recv().unwrap();
+
+    // step one: call the function and optionally handle panics
     let rv = if panic_handling {
         reset_panic_info();
         match panic::catch_unwind(panic::AssertUnwindSafe(|| function(args))) {
@@ -224,5 +226,25 @@ where
     } else {
         Ok(function(args))
     };
-    let _ = sender.to().send(rv);
+
+    // step two: try to serialize but also handle panics and errors
+    // during serialization.  This can be caused by issues such as serde
+    // flatten not being supported by bincode: https://github.com/servo/bincode/issues/245
+    //
+    // this currently asumes that it's safe to use send() twice in this case
+    // which it is as the channel internally buffers before sending.
+    let sender = sender.to();
+    if panic_handling {
+        reset_panic_info();
+        match panic::catch_unwind(panic::AssertUnwindSafe(|| {
+            sender
+                .send(rv)
+                .expect("serialization of result to bincode failed")
+        })) {
+            Ok(()) => {}
+            Err(panic) => sender.send(Err(take_panic(&*panic))).unwrap(),
+        }
+    } else {
+        sender.send(rv).unwrap();
+    }
 }
