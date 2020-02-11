@@ -45,6 +45,17 @@
 //! * `test-support`: when this feature is enabled procspawn can be used
 //!   with rusttest.  See [`enable_test_support!`](macro.enable_test_support.html)
 //!   for more information.
+//! * `json`: enables optional JSON serialization.  For more information see
+//!   [Bincode Limitations](#bincode-limitations).
+//!
+//! ## Bincode Limitations
+//!
+//! This crate uses [`bincode`](https://github.com/servo/bincode) internally
+//! for inter process communication.  Bincode currently has some limitations
+//! which make some serde features incompatible with it.  Most notably if you
+//! use `#[serde(flatten)]` data cannot be sent across the processes.  To
+//! work around this you can enable the `json` feature and wrap affected objects
+//! in the [`Json`](struct.Json.html) wrapper to force JSON serialization.
 //!
 //! ## Platform Support
 //!
@@ -61,6 +72,9 @@ mod error;
 mod panic;
 mod pool;
 
+#[cfg(feature = "json")]
+mod json;
+
 #[doc(hidden)]
 pub mod testsupport;
 
@@ -68,6 +82,9 @@ pub use self::core::{init, ProcConfig};
 pub use self::error::{Location, PanicInfo, SpawnError};
 pub use self::pool::{Pool, PoolBuilder};
 pub use self::proc::{Builder, JoinHandle};
+
+#[cfg(feature = "json")]
+pub use self::json::Json;
 
 /// Spawn a new process to run a function with some payload.
 pub fn spawn<
