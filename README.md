@@ -47,6 +47,17 @@ The following feature flags exist:
 * `test-support`: when this feature is enabled procspawn can be used
   with rusttest.  See [`enable_test_support!`](https://docs.rs/procspawn/latest/procspawn/macro.enable_test_support.html)
   for more information.
+* `json`: enables optional JSON serialization.  For more information see
+  [Bincode Limitations](https://docs.rs/procspawn/latest/procspawn/#bincode-limitations).
+
+### Bincode Limitations
+
+This crate uses [`bincode`](https://github.com/servo/bincode) internally
+for inter process communication.  Bincode currently has some limitations
+which make some serde features incompatible with it.  Most notably if you
+use `#[serde(flatten)]` data cannot be sent across the processes.  To
+work around this you can enable the `json` feature and wrap affected objects
+in the [`Json`](https://docs.rs/procspawn/latest/procspawn/struct.Json.html) wrapper to force JSON serialization.
 
 ### Platform Support
 
