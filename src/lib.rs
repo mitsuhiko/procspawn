@@ -114,6 +114,19 @@ pub use self::proc::{Builder, JoinHandle};
 pub use self::json::Json;
 
 /// Spawn a new process to run a function with some payload.
+///
+/// ```rust,no_run
+/// // call this early in your main() function.  This is where all spawned
+/// // functions will be invoked.
+/// procspawn::init();
+///
+/// let data = vec![1, 2, 3, 4];
+/// let handle = procspawn::spawn(data, |data| {
+///     println!("Received data {:?}", &data);
+///     data.into_iter().sum::<i64>()
+/// });
+/// let result = handle.join().unwrap();
+/// ```
 pub fn spawn<
     F: FnOnce(A) -> R + Copy,
     A: Serialize + for<'de> Deserialize<'de>,

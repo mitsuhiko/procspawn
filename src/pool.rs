@@ -131,6 +131,9 @@ impl Pool {
     }
 
     /// Spawns a closure into a process of the pool.
+    ///
+    /// This works exactly like [`procspawn::spawn`](fn.spawn.html) but instead
+    /// of spawning a new process, it reuses a process from the pool.
     pub fn spawn<
         F: FnOnce(A) -> R + Copy,
         A: Serialize + for<'de> Deserialize<'de>,
