@@ -1,7 +1,7 @@
 use std::fmt;
 use std::io;
 
-use ipc_channel::Error as IpcError;
+use ipc_channel::{Error as IpcError, ErrorKind as IpcErrorKind};
 use serde::{Deserialize, Serialize};
 
 /// Represents a panic caugh across processes.
@@ -122,6 +122,7 @@ enum SpawnErrorKind {
     Ipc(IpcError),
     Io(io::Error),
     Panic(PanicInfo),
+    IpcChannelClosed(io::Error),
     Cancelled,
     TimedOut,
 }
@@ -150,9 +151,18 @@ impl SpawnError {
         }
     }
 
-    /// True if this error indicates a timeout
+    /// True if this error indicates a timeout.
     pub fn is_timeout(&self) -> bool {
         if let SpawnErrorKind::TimedOut = self.kind {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// True if this means the remote side closed.
+    pub fn is_remote_close(&self) -> bool {
+        if let SpawnErrorKind::IpcChannelClosed(..) = self.kind {
             true
         } else {
             false
@@ -180,6 +190,7 @@ impl std::error::Error for SpawnError {
             SpawnErrorKind::Panic(_) => None,
             SpawnErrorKind::Cancelled => None,
             SpawnErrorKind::TimedOut => None,
+            SpawnErrorKind::IpcChannelClosed(ref err) => Some(&*err),
         }
     }
 }
@@ -192,12 +203,20 @@ impl fmt::Display for SpawnError {
             SpawnErrorKind::Panic(ref p) => write!(f, "process spawn error: panic: {}", p),
             SpawnErrorKind::Cancelled => write!(f, "process spawn error: call cancelled"),
             SpawnErrorKind::TimedOut => write!(f, "process spawn error: timed out"),
+            SpawnErrorKind::IpcChannelClosed(_) => write!(
+                f,
+                "process spawn error: remote side closed (might have panicked on serialization)"
+            ),
         }
     }
 }
 
 impl From<IpcError> for SpawnError {
     fn from(err: IpcError) -> SpawnError {
+        // unwrap nested IO errors
+        if let IpcErrorKind::Io(io_err) = *err {
+            return SpawnError::from(io_err);
+        }
         SpawnError {
             kind: SpawnErrorKind::Ipc(err),
         }
@@ -206,6 +225,11 @@ impl From<IpcError> for SpawnError {
 
 impl From<io::Error> for SpawnError {
     fn from(err: io::Error) -> SpawnError {
+        if let io::ErrorKind::ConnectionReset = err.kind() {
+            return SpawnError {
+                kind: SpawnErrorKind::IpcChannelClosed(err),
+            };
+        }
         SpawnError {
             kind: SpawnErrorKind::Io(err),
         }

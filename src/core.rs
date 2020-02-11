@@ -1,10 +1,12 @@
 use std::env;
+use std::io;
 use std::mem;
 use std::panic;
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use ipc_channel::ipc::{self, IpcReceiver, IpcSender, OpaqueIpcReceiver, OpaqueIpcSender};
+use ipc_channel::ErrorKind as IpcErrorKind;
 use serde::{Deserialize, Serialize};
 
 use crate::error::PanicInfo;
@@ -224,5 +226,18 @@ where
     } else {
         Ok(function(args))
     };
-    let _ = sender.to().send(rv);
+
+    // sending can fail easily because of bincode limitations.  If you see
+    // this in your tracebacks consider using the `Json` wrapper.
+    if let Err(err) = sender.to().send(rv) {
+        if let IpcErrorKind::Io(ref io) = *err {
+            if io.kind() == io::ErrorKind::NotFound || io.kind() == io::ErrorKind::ConnectionReset {
+                // this error is okay.  this means nobody actually
+                // waited for the call, so we just ignore it.
+                return;
+            }
+        } else {
+            Err::<(), _>(err).expect("could not send event over ipc channel");
+        }
+    }
 }

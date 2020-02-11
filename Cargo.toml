@@ -18,6 +18,7 @@ all-features = true
 [features]
 default = ["backtrace"]
 test-support = ["ctor"]
+json = ["serde_json"]
 
 [dependencies]
 ipc-channel = "0.13.0"
@@ -25,10 +26,15 @@ serde = { version = "1.0.104", features = ["derive"] }
 backtrace = { version = "0.3.43", optional = true, features = ["serde"] }
 libc = "0.2.66"
 ctor = { version = "0.1.12", optional = true }
+serde_json = { version = "1.0.47", optional = true }
 
 [[example]]
 name = "panic"
 required-features = ["backtrace"]
+
+[[example]]
+name = "bad-serialization"
+required-features = ["backtrace", "json"]
 
 [[test]]
 name = "test_basic"
