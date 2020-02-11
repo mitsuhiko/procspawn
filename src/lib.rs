@@ -73,6 +73,21 @@
 //!
 //! Currently this crate only supports macOS and Linux because ipc-channel
 //! itself does not support Windows yet.
+//!
+//! # Examples
+//!
+//! Here are some examples of `procspawn` in action:
+//!
+//! * [simple.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/simple.rs):
+//!   a very simple example showing the basics.
+//! * [args.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/args.rs):
+//!   shows how arguments are available to the subprocess as well.
+//! * [timeout.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/timeout.rs):
+//!   shows how you can wait on a process with timeouts.
+//! * [bad-serialization.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/bad-serialization.rs):
+//!   shows JSON based workarounds for bincode limitations.
+//!
+//! More examples can be found in the example folder: [examples](https://github.com/mitsuhiko/procspawn/tree/master/examples)
 
 use serde::{Deserialize, Serialize};
 
