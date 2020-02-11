@@ -19,7 +19,6 @@ use crate::pool::PooledHandle;
 
 type PreExecFunc = dyn FnMut() -> io::Result<()> + Send + Sync + 'static;
 
-#[macro_export]
 macro_rules! assert_empty_closure {
     ($func:ident) => {
         assert_eq!(
