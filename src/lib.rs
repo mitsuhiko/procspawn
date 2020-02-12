@@ -89,7 +89,9 @@
 //! # Platform Support
 //!
 //! Currently this crate only supports macOS and Linux because ipc-channel
-//! itself does not support Windows yet.
+//! itself does not support Windows yet.  Additionally the findshlibs which is
+//! used for the `safe-shared-libraries` feature also does not yet support
+//! Windows.
 //!
 //! # Examples
 //!
