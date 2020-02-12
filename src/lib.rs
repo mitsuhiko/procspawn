@@ -83,8 +83,9 @@
 //! feature (which is on by default) in which case you are not allowed to
 //! invoke functions from shared libraries and no validation is performed.
 //!
-//! This in normal circumstances should be okay but technically disabling this
-//! feature is a violation to Rust's safety guarnatees!
+//! This in normal circumstances should be okay but you need to validate this.
+//! Spawning processes will be disabled if the feature is not enabled until
+//! you call the [`assert_spawn_is_safe`](fn.assert_spawn_is_safe.html) function.
 //!
 //! # Platform Support
 //!
@@ -124,7 +125,7 @@ mod json;
 #[doc(hidden)]
 pub mod testsupport;
 
-pub use self::core::{init, ProcConfig};
+pub use self::core::{assert_spawn_is_safe, init, ProcConfig};
 pub use self::error::{Location, PanicInfo, SpawnError};
 pub use self::pool::{Pool, PoolBuilder};
 pub use self::proc::{Builder, JoinHandle};
