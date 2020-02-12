@@ -69,6 +69,13 @@
 //! work around this you can enable the `json` feature and wrap affected objects
 //! in the [`Json`](struct.Json.html) wrapper to force JSON serialization.
 //!
+//! # Shared Libraries
+//!
+//! `procspawn` uses the [`findshlibs`](https://github.com/gimli-rs/findshlibs)
+//! crate to determine where a function is located in memory in both processes.
+//! If a shared library is not loaded in the subprocess (because for instance it
+//! is loaded at runtime) then the call will fail.
+//!
 //! # Platform Support
 //!
 //! Currently this crate only supports macOS and Linux because ipc-channel

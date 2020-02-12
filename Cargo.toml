@@ -27,6 +27,7 @@ backtrace = { version = "0.3.43", optional = true, features = ["serde"] }
 libc = "0.2.66"
 ctor = { version = "0.1.12", optional = true }
 serde_json = { version = "1.0.47", optional = true }
+findshlibs = "0.5.0"
 
 [[example]]
 name = "panic"
