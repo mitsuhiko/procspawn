@@ -6,7 +6,9 @@ use std::panic;
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+#[cfg(feature = "safe-shared-libraries")]
 use findshlibs::{Avma, IterationControl, Segment, SharedLibrary};
+
 use ipc_channel::ipc::{self, IpcReceiver, IpcSender, OpaqueIpcReceiver, OpaqueIpcSender};
 use ipc_channel::ErrorKind as IpcErrorKind;
 use serde::{Deserialize, Serialize};
@@ -52,41 +54,57 @@ pub fn should_pass_args() -> bool {
 }
 
 fn find_shared_library_offset_by_name(name: &OsStr) -> isize {
-    let mut result = None;
-    findshlibs::TargetSharedLibrary::each(|shlib| {
-        if shlib.name() == name {
-            result = Some(
-                shlib
-                    .segments()
-                    .next()
-                    .map_or(0, |x| x.actual_virtual_memory_address(shlib).0 as isize),
-            );
-            return IterationControl::Break;
+    #[cfg(feature = "safe-shared-libraries")]
+    {
+        let mut result = None;
+        findshlibs::TargetSharedLibrary::each(|shlib| {
+            if shlib.name() == name {
+                result = Some(
+                    shlib
+                        .segments()
+                        .next()
+                        .map_or(0, |x| x.actual_virtual_memory_address(shlib).0 as isize),
+                );
+                return IterationControl::Break;
+            }
+            IterationControl::Continue
+        });
+        match result {
+            Some(rv) => rv,
+            None => panic!("Unable to locate shared library {:?} in subprocess", name),
         }
-        IterationControl::Continue
-    });
-    match result {
-        Some(rv) => rv,
-        None => panic!("Unable to locate shared library {:?} in subprocess", name),
+    }
+    #[cfg(not(feature = "safe-shared-libraries"))]
+    {
+        let _ = name;
+        init as *const () as isize
     }
 }
 
 fn find_library_name_and_offset(f: *const u8) -> (OsString, isize) {
-    let mut result = None;
-    findshlibs::TargetSharedLibrary::each(|shlib| {
-        let start = shlib
-            .segments()
-            .next()
-            .map_or(0, |x| x.actual_virtual_memory_address(shlib).0 as isize);
-        for seg in shlib.segments() {
-            if seg.contains_avma(shlib, Avma(f)) {
-                result = Some((shlib.name().to_owned(), start));
-                return IterationControl::Break;
+    #[cfg(feature = "safe-shared-libraries")]
+    {
+        let mut result = None;
+        findshlibs::TargetSharedLibrary::each(|shlib| {
+            let start = shlib
+                .segments()
+                .next()
+                .map_or(0, |x| x.actual_virtual_memory_address(shlib).0 as isize);
+            for seg in shlib.segments() {
+                if seg.contains_avma(shlib, Avma(f)) {
+                    result = Some((shlib.name().to_owned(), start));
+                    return IterationControl::Break;
+                }
             }
-        }
-        IterationControl::Continue
-    });
-    result.expect("Unable to locate function pointer in loaded image")
+            IterationControl::Continue
+        });
+        result.expect("Unable to locate function pointer in loaded image")
+    }
+    #[cfg(not(feature = "safe-shared-libraries"))]
+    {
+        let _ = f;
+        (OsString::new(), init as *const () as isize)
+    }
 }
 
 impl ProcConfig {
