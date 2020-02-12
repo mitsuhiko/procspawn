@@ -51,6 +51,10 @@
 //!
 //! The following feature flags exist:
 //!
+//! * `safe-shared-libraries`: this feature is enabled by default.  When this
+//!   feature is disable then no validation about shared library load status
+//!   is performed around IPC calls.  This is highly unsafe if shared libraries
+//!   are being used and a function from a shared library is spawned.
 //! * `backtrace`: this feature is enabled by default.  When in use then
 //!   backtraces are captured with the `backtrace-rs` crate and serialized
 //!   across process boundaries.
@@ -69,10 +73,25 @@
 //! work around this you can enable the `json` feature and wrap affected objects
 //! in the [`Json`](struct.Json.html) wrapper to force JSON serialization.
 //!
+//! # Shared Libraries
+//!
+//! `procspawn` uses the [`findshlibs`](https://github.com/gimli-rs/findshlibs)
+//! crate to determine where a function is located in memory in both processes.
+//! If a shared library is not loaded in the subprocess (because for instance it
+//! is loaded at runtime) then the call will fail.  Because this adds quite
+//! some overhead over every call you can also disable the `safe-shared-libraries`
+//! feature (which is on by default) in which case you are not allowed to
+//! invoke functions from shared libraries and no validation is performed.
+//!
+//! This in normal circumstances should be okay but technically disabling this
+//! feature is a violation to Rust's safety guarnatees!
+//!
 //! # Platform Support
 //!
 //! Currently this crate only supports macOS and Linux because ipc-channel
-//! itself does not support Windows yet.
+//! itself does not support Windows yet.  Additionally the findshlibs which is
+//! used for the `safe-shared-libraries` feature also does not yet support
+//! Windows.
 //!
 //! # Examples
 //!
@@ -127,13 +146,9 @@ pub use self::json::Json;
 /// });
 /// let result = handle.join().unwrap();
 /// ```
-pub fn spawn<
-    F: FnOnce(A) -> R + Copy,
-    A: Serialize + for<'de> Deserialize<'de>,
-    R: Serialize + for<'de> Deserialize<'de>,
->(
+pub fn spawn<A: Serialize + for<'de> Deserialize<'de>, R: Serialize + for<'de> Deserialize<'de>>(
     args: A,
-    f: F,
+    f: fn(A) -> R,
 ) -> JoinHandle<R> {
     Builder::new().spawn(args, f)
 }

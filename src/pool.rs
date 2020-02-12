@@ -135,20 +135,17 @@ impl Pool {
     /// This works exactly like [`procspawn::spawn`](fn.spawn.html) but instead
     /// of spawning a new process, it reuses a process from the pool.
     pub fn spawn<
-        F: FnOnce(A) -> R + Copy,
         A: Serialize + for<'de> Deserialize<'de>,
         R: Serialize + for<'de> Deserialize<'de> + Send + 'static,
     >(
         &self,
         args: A,
-        func: F,
+        func: fn(A) -> R,
     ) -> JoinHandle<R> {
-        assert_empty_closure!(F);
         self.assert_alive();
-        let _func = func;
         let (args_tx, args_rx) = ipc::channel().unwrap();
         let (return_tx, return_rx) = ipc::channel().unwrap();
-        let call = MarshalledCall::marshal::<F, A, R>(args_rx, return_tx);
+        let call = MarshalledCall::marshal::<A, R>(func, args_rx, return_tx);
         args_tx.send(args).unwrap();
         let (waiter_tx, waiter_rx) = mpsc::sync_channel(0);
         let error_waiter_tx = waiter_tx.clone();

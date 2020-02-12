@@ -1,9 +1,13 @@
 use std::env;
+use std::ffi::{OsStr, OsString};
 use std::io;
 use std::mem;
 use std::panic;
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(feature = "safe-shared-libraries")]
+use findshlibs::{Avma, IterationControl, Segment, SharedLibrary};
 
 use ipc_channel::ipc::{self, IpcReceiver, IpcSender, OpaqueIpcReceiver, OpaqueIpcSender};
 use ipc_channel::ErrorKind as IpcErrorKind;
@@ -47,6 +51,60 @@ pub fn mark_initialized() {
 
 pub fn should_pass_args() -> bool {
     PASS_ARGS.load(Ordering::SeqCst)
+}
+
+fn find_shared_library_offset_by_name(name: &OsStr) -> isize {
+    #[cfg(feature = "safe-shared-libraries")]
+    {
+        let mut result = None;
+        findshlibs::TargetSharedLibrary::each(|shlib| {
+            if shlib.name() == name {
+                result = Some(
+                    shlib
+                        .segments()
+                        .next()
+                        .map_or(0, |x| x.actual_virtual_memory_address(shlib).0 as isize),
+                );
+                return IterationControl::Break;
+            }
+            IterationControl::Continue
+        });
+        match result {
+            Some(rv) => rv,
+            None => panic!("Unable to locate shared library {:?} in subprocess", name),
+        }
+    }
+    #[cfg(not(feature = "safe-shared-libraries"))]
+    {
+        let _ = name;
+        init as *const () as isize
+    }
+}
+
+fn find_library_name_and_offset(f: *const u8) -> (OsString, isize) {
+    #[cfg(feature = "safe-shared-libraries")]
+    {
+        let mut result = None;
+        findshlibs::TargetSharedLibrary::each(|shlib| {
+            let start = shlib
+                .segments()
+                .next()
+                .map_or(0, |x| x.actual_virtual_memory_address(shlib).0 as isize);
+            for seg in shlib.segments() {
+                if seg.contains_avma(shlib, Avma(f)) {
+                    result = Some((shlib.name().to_owned(), start));
+                    return IterationControl::Break;
+                }
+            }
+            IterationControl::Continue
+        });
+        result.expect("Unable to locate function pointer in loaded image")
+    }
+    #[cfg(not(feature = "safe-shared-libraries"))]
+    {
+        let _ = f;
+        (OsString::new(), init as *const () as isize)
+    }
 }
 
 impl ProcConfig {
@@ -163,6 +221,8 @@ fn bootstrap_ipc(token: String, config: &ProcConfig) {
 /// Marshals a call across process boundaries.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MarshalledCall {
+    pub lib_name: OsString,
+    pub fn_offset: isize,
     pub wrapper_offset: isize,
     pub args_receiver: OpaqueIpcReceiver,
     pub return_sender: OpaqueIpcSender,
@@ -170,18 +230,23 @@ pub struct MarshalledCall {
 
 impl MarshalledCall {
     /// Marshalls the call.
-    pub fn marshal<F, A, R>(
+    pub fn marshal<A, R>(
+        f: fn(A) -> R,
         args_receiver: IpcReceiver<A>,
         return_sender: IpcSender<Result<R, PanicInfo>>,
     ) -> MarshalledCall
     where
-        F: FnOnce(A) -> R,
         A: Serialize + for<'de> Deserialize<'de>,
         R: Serialize + for<'de> Deserialize<'de>,
     {
-        assert_empty_closure!(F);
+        let (lib_name, offset) = find_library_name_and_offset(f as *const () as *const u8);
+        let init_loc = init as *const () as isize;
+        let fn_offset = f as *const () as isize - offset as isize;
+        let wrapper_offset = run_func::<A, R> as *const () as isize - init_loc;
         MarshalledCall {
-            wrapper_offset: get_wrapper_offset::<F, A, R>(),
+            lib_name,
+            fn_offset,
+            wrapper_offset,
             args_receiver: args_receiver.to_opaque(),
             return_sender: return_sender.to_opaque(),
         }
@@ -191,29 +256,31 @@ impl MarshalledCall {
     pub fn call(self, panic_handling: bool) {
         unsafe {
             let ptr = self.wrapper_offset + init as *const () as isize;
-            let func: fn(OpaqueIpcReceiver, OpaqueIpcSender, bool) = mem::transmute(ptr);
-            func(self.args_receiver, self.return_sender, panic_handling);
+            let func: fn(&OsStr, isize, OpaqueIpcReceiver, OpaqueIpcSender, bool) =
+                mem::transmute(ptr);
+            func(
+                &self.lib_name,
+                self.fn_offset,
+                self.args_receiver,
+                self.return_sender,
+                panic_handling,
+            );
         }
     }
 }
 
-fn get_wrapper_offset<F, A, R>() -> isize
-where
-    F: FnOnce(A) -> R,
+unsafe fn run_func<A, R>(
+    lib_name: &OsStr,
+    fn_offset: isize,
+    recv: OpaqueIpcReceiver,
+    sender: OpaqueIpcSender,
+    panic_handling: bool,
+) where
     A: Serialize + for<'de> Deserialize<'de>,
     R: Serialize + for<'de> Deserialize<'de>,
 {
-    let init_loc = init as *const () as isize;
-    run_func::<F, A, R> as *const () as isize - init_loc
-}
-
-unsafe fn run_func<F, A, R>(recv: OpaqueIpcReceiver, sender: OpaqueIpcSender, panic_handling: bool)
-where
-    F: FnOnce(A) -> R,
-    A: Serialize + for<'de> Deserialize<'de>,
-    R: Serialize + for<'de> Deserialize<'de>,
-{
-    let function: F = mem::zeroed();
+    let lib_offset = find_shared_library_offset_by_name(lib_name) as isize;
+    let function: fn(A) -> R = mem::transmute(fn_offset + lib_offset as *const () as isize);
     let args = recv.to().recv().unwrap();
     let rv = if panic_handling {
         reset_panic_info();

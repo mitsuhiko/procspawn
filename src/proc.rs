@@ -19,16 +19,6 @@ use crate::pool::PooledHandle;
 
 type PreExecFunc = dyn FnMut() -> io::Result<()> + Send + Sync + 'static;
 
-macro_rules! assert_empty_closure {
-    ($func:ident) => {
-        assert_eq!(
-            std::mem::size_of::<$func>(),
-            0,
-            "marshalling of closures that capture data is not supported!"
-        );
-    };
-}
-
 #[derive(Clone)]
 pub struct ProcCommon {
     pub vars: HashMap<OsString, OsString>,
@@ -208,13 +198,12 @@ impl Builder {
 
     /// Spawns the process.
     pub fn spawn<
-        F: FnOnce(A) -> R + Copy,
         A: Serialize + for<'de> Deserialize<'de>,
         R: Serialize + for<'de> Deserialize<'de>,
     >(
         &mut self,
         args: A,
-        func: F,
+        func: fn(A) -> R,
     ) -> JoinHandle<R> {
         assert_initialized();
         JoinHandle {
@@ -223,15 +212,13 @@ impl Builder {
     }
 
     fn spawn_helper<
-        F: FnOnce(A) -> R + Copy,
         A: Serialize + for<'de> Deserialize<'de>,
         R: Serialize + for<'de> Deserialize<'de>,
     >(
         self,
         args: A,
-        _: F,
+        func: fn(A) -> R,
     ) -> Result<JoinHandleInner<R>, SpawnError> {
-        assert_empty_closure!(F);
         let (server, token) = IpcOneShotServer::<IpcSender<MarshalledCall>>::new()?;
         let me = if cfg!(target_os = "linux") {
             // will work even if exe is moved
@@ -298,7 +285,7 @@ impl Builder {
         let (return_tx, return_rx) = ipc::channel::<Result<R, PanicInfo>>()?;
         args_tx.send(args)?;
 
-        tx.send(MarshalledCall::marshal::<F, A, R>(args_rx, return_tx))?;
+        tx.send(MarshalledCall::marshal::<A, R>(func, args_rx, return_tx))?;
         Ok(JoinHandleInner::Process(ProcessHandle {
             recv: return_rx,
             state: Arc::new(ProcessHandleState::new(Some(process.id()))),
