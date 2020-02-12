@@ -36,7 +36,7 @@ static ALLOW_UNSAFE_SPAWN: AtomicBool = AtomicBool::new(false);
 ///
 /// You must only call this function if you can guarantee that none of your
 /// `spawn` calls cross a shared library boundary.
-pub unsafe fn assert_no_shared_libraries() {
+pub unsafe fn assert_spawn_is_safe() {
     #[cfg(not(feature = "safe-shared-libraries"))]
     {
         ALLOW_UNSAFE_SPAWN.store(true, Ordering::SeqCst);

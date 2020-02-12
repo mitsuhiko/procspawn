@@ -85,7 +85,7 @@
 //!
 //! This in normal circumstances should be okay but you need to validate this.
 //! Spawning processes will be disabled if the feature is not enabled until
-//! you call the [`assert_no_shared_libraries`](fn.assert_no_shared_libraries.html) function.
+//! you call the [`assert_spawn_is_safe`](fn.assert_spawn_is_safe.html) function.
 //!
 //! # Platform Support
 //!
@@ -125,7 +125,7 @@ mod json;
 #[doc(hidden)]
 pub mod testsupport;
 
-pub use self::core::{assert_no_shared_libraries, init, ProcConfig};
+pub use self::core::{assert_spawn_is_safe, init, ProcConfig};
 pub use self::error::{Location, PanicInfo, SpawnError};
 pub use self::pool::{Pool, PoolBuilder};
 pub use self::proc::{Builder, JoinHandle};
