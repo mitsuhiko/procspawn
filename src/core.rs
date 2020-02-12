@@ -163,6 +163,7 @@ fn bootstrap_ipc(token: String, config: &ProcConfig) {
 /// Marshals a call across process boundaries.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MarshalledCall {
+    pub fn_offset: isize,
     pub wrapper_offset: isize,
     pub args_receiver: OpaqueIpcReceiver,
     pub return_sender: OpaqueIpcSender,
@@ -170,18 +171,21 @@ pub struct MarshalledCall {
 
 impl MarshalledCall {
     /// Marshalls the call.
-    pub fn marshal<F, A, R>(
+    pub fn marshal<A, R>(
+        f: fn(A) -> R,
         args_receiver: IpcReceiver<A>,
         return_sender: IpcSender<Result<R, PanicInfo>>,
     ) -> MarshalledCall
     where
-        F: FnOnce(A) -> R,
         A: Serialize + for<'de> Deserialize<'de>,
         R: Serialize + for<'de> Deserialize<'de>,
     {
-        assert_empty_closure!(F);
+        let init_loc = init as *const () as isize;
+        let fn_offset = f as *const () as isize - init_loc;
+        let wrapper_offset = run_func::<A, R> as *const () as isize - init_loc;
         MarshalledCall {
-            wrapper_offset: get_wrapper_offset::<F, A, R>(),
+            fn_offset,
+            wrapper_offset,
             args_receiver: args_receiver.to_opaque(),
             return_sender: return_sender.to_opaque(),
         }
@@ -191,29 +195,27 @@ impl MarshalledCall {
     pub fn call(self, panic_handling: bool) {
         unsafe {
             let ptr = self.wrapper_offset + init as *const () as isize;
-            let func: fn(OpaqueIpcReceiver, OpaqueIpcSender, bool) = mem::transmute(ptr);
-            func(self.args_receiver, self.return_sender, panic_handling);
+            let func: fn(isize, OpaqueIpcReceiver, OpaqueIpcSender, bool) = mem::transmute(ptr);
+            func(
+                self.fn_offset,
+                self.args_receiver,
+                self.return_sender,
+                panic_handling,
+            );
         }
     }
 }
 
-fn get_wrapper_offset<F, A, R>() -> isize
-where
-    F: FnOnce(A) -> R,
+unsafe fn run_func<A, R>(
+    fn_offset: isize,
+    recv: OpaqueIpcReceiver,
+    sender: OpaqueIpcSender,
+    panic_handling: bool,
+) where
     A: Serialize + for<'de> Deserialize<'de>,
     R: Serialize + for<'de> Deserialize<'de>,
 {
-    let init_loc = init as *const () as isize;
-    run_func::<F, A, R> as *const () as isize - init_loc
-}
-
-unsafe fn run_func<F, A, R>(recv: OpaqueIpcReceiver, sender: OpaqueIpcSender, panic_handling: bool)
-where
-    F: FnOnce(A) -> R,
-    A: Serialize + for<'de> Deserialize<'de>,
-    R: Serialize + for<'de> Deserialize<'de>,
-{
-    let function: F = mem::zeroed();
+    let function: fn(A) -> R = mem::transmute(fn_offset + init as *const () as isize);
     let args = recv.to().recv().unwrap();
     let rv = if panic_handling {
         reset_panic_info();

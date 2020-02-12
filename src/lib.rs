@@ -127,13 +127,9 @@ pub use self::json::Json;
 /// });
 /// let result = handle.join().unwrap();
 /// ```
-pub fn spawn<
-    F: FnOnce(A) -> R + Copy,
-    A: Serialize + for<'de> Deserialize<'de>,
-    R: Serialize + for<'de> Deserialize<'de>,
->(
+pub fn spawn<A: Serialize + for<'de> Deserialize<'de>, R: Serialize + for<'de> Deserialize<'de>>(
     args: A,
-    f: F,
+    f: fn(A) -> R,
 ) -> JoinHandle<R> {
     Builder::new().spawn(args, f)
 }
