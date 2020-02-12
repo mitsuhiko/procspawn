@@ -13,7 +13,7 @@ use std::{io, thread};
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
 use serde::{Deserialize, Serialize};
 
-use crate::core::{assert_initialized, should_pass_args, MarshalledCall, ENV_NAME};
+use crate::core::{assert_spawn_okay, should_pass_args, MarshalledCall, ENV_NAME};
 use crate::error::{PanicInfo, SpawnError};
 use crate::pool::PooledHandle;
 
@@ -205,7 +205,7 @@ impl Builder {
         args: A,
         func: fn(A) -> R,
     ) -> JoinHandle<R> {
-        assert_initialized();
+        assert_spawn_okay();
         JoinHandle {
             inner: mem::replace(self, Default::default()).spawn_helper(args, func),
         }

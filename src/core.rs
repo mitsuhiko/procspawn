@@ -20,6 +20,29 @@ pub const ENV_NAME: &str = "__PROCSPAWN_CONTENT_PROCESS_ID";
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static PASS_ARGS: AtomicBool = AtomicBool::new(false);
 
+#[cfg(not(feature = "safe-shared-libraries"))]
+static ALLOW_UNSAFE_SPAWN: AtomicBool = AtomicBool::new(false);
+
+/// Asserts no shared libraries are used for functions spawned.
+///
+/// If the `safe-shared-libraries` feature is disabled this function must be
+/// called once to validate that the application does not spawn functions
+/// from a shared library.
+///
+/// This must be called once before the first call to a spawn function as
+/// otherwise they will panic.
+///
+/// # Safety
+///
+/// You must only call this function if you can guarantee that none of your
+/// `spawn` calls cross a shared library boundary.
+pub unsafe fn assert_no_shared_libraries() {
+    #[cfg(not(feature = "safe-shared-libraries"))]
+    {
+        ALLOW_UNSAFE_SPAWN.store(true, Ordering::SeqCst);
+    }
+}
+
 /// Can be used to configure the process.
 pub struct ProcConfig {
     callback: Option<Box<dyn FnOnce()>>,
@@ -198,9 +221,18 @@ pub fn init() {
 }
 
 #[inline]
-pub fn assert_initialized() {
+pub fn assert_spawn_okay() {
     if !INITIALIZED.load(Ordering::SeqCst) {
         panic!("procspawn was not initialized");
+    }
+    #[cfg(not(feature = "safe-shared-libraries"))]
+    {
+        if !ALLOW_UNSAFE_SPAWN.load(Ordering::SeqCst) {
+            panic!(
+                "spawn() prevented because safe-shared-library feature was \
+                 disabled and assert_no_shared_libraries was not invoked."
+            );
+        }
     }
 }
 
