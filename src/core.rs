@@ -236,13 +236,25 @@ pub fn assert_spawn_okay() {
     }
 }
 
+fn is_benign_bootstrap_error(err: &io::Error) -> bool {
+    // on macos we will observe an unknown mach error
+    err.kind() == io::ErrorKind::Other && err.to_string() == "Unknown Mach error: 44e"
+}
+
 fn bootstrap_ipc(token: String, config: &ProcConfig) {
     if config.panic_handling {
         init_panic_hook(config.backtrace_capture());
     }
 
-    let connection_bootstrap: IpcSender<IpcSender<MarshalledCall>> =
-        IpcSender::connect(token).unwrap();
+    let connection_bootstrap: IpcSender<IpcSender<MarshalledCall>> = match IpcSender::connect(token) {
+        Ok(sender) => sender,
+        Err(err) => {
+            if !is_benign_bootstrap_error(&err) {
+                Err::<(), _>(err).expect("could not bootstrap ipc connection");
+            }
+            process::exit(1);
+        }
+    };
     let (tx, rx) = ipc::channel().unwrap();
     connection_bootstrap.send(tx).unwrap();
     let marshalled_call = rx.recv().unwrap();
