@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Duration;
 
 use ipc_channel::ipc;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 
 use crate::core::MarshalledCall;
 use crate::error::SpawnError;
@@ -48,7 +48,7 @@ impl<T> PooledHandle<T> {
     }
 }
 
-impl<T: Serialize + for<'de> Deserialize<'de>> PooledHandle<T> {
+impl<T: Serialize + DeserializeOwned> PooledHandle<T> {
     pub fn join(&mut self) -> Result<T, SpawnError> {
         match self.waiter_rx.recv() {
             Ok(Ok(rv)) => Ok(rv),
@@ -135,8 +135,8 @@ impl Pool {
     /// This works exactly like [`procspawn::spawn`](fn.spawn.html) but instead
     /// of spawning a new process, it reuses a process from the pool.
     pub fn spawn<
-        A: Serialize + for<'de> Deserialize<'de>,
-        R: Serialize + for<'de> Deserialize<'de> + Send + 'static,
+        A: Serialize + DeserializeOwned,
+        R: Serialize + DeserializeOwned + Send + 'static,
     >(
         &self,
         args: A,

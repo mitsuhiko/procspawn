@@ -109,7 +109,7 @@
 //!
 //! More examples can be found in the example folder: [examples](https://github.com/mitsuhiko/procspawn/tree/master/examples)
 
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 
 #[macro_use]
 mod proc;
@@ -147,7 +147,7 @@ pub use self::json::Json;
 /// });
 /// let result = handle.join().unwrap();
 /// ```
-pub fn spawn<A: Serialize + for<'de> Deserialize<'de>, R: Serialize + for<'de> Deserialize<'de>>(
+pub fn spawn<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
     args: A,
     f: fn(A) -> R,
 ) -> JoinHandle<R> {

@@ -11,7 +11,7 @@ use std::{env, mem, process};
 use std::{io, thread};
 
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 
 use crate::core::{assert_spawn_okay, should_pass_args, MarshalledCall, ENV_NAME};
 use crate::error::{PanicInfo, SpawnError};
@@ -197,10 +197,7 @@ impl Builder {
     }
 
     /// Spawns the process.
-    pub fn spawn<
-        A: Serialize + for<'de> Deserialize<'de>,
-        R: Serialize + for<'de> Deserialize<'de>,
-    >(
+    pub fn spawn<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
         &mut self,
         args: A,
         func: fn(A) -> R,
@@ -211,10 +208,7 @@ impl Builder {
         }
     }
 
-    fn spawn_helper<
-        A: Serialize + for<'de> Deserialize<'de>,
-        R: Serialize + for<'de> Deserialize<'de>,
-    >(
+    fn spawn_helper<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
         self,
         args: A,
         func: fn(A) -> R,
@@ -373,7 +367,7 @@ impl<T> ProcessHandle<T> {
     }
 }
 
-impl<T: Serialize + for<'de> Deserialize<'de>> ProcessHandle<T> {
+impl<T: Serialize + DeserializeOwned> ProcessHandle<T> {
     pub fn join(&mut self) -> Result<T, SpawnError> {
         let rv = self.recv.recv()?.map_err(Into::into);
         self.state.exited.store(true, Ordering::SeqCst);
@@ -489,7 +483,7 @@ impl<T> JoinHandle<T> {
     }
 }
 
-impl<T: Serialize + for<'de> Deserialize<'de>> JoinHandle<T> {
+impl<T: Serialize + DeserializeOwned> JoinHandle<T> {
     /// Wait for the child process to return a result.
     ///
     /// If the join handle was created from a pool the join is virtualized.
