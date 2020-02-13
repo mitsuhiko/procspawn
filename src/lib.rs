@@ -109,8 +109,6 @@
 //!
 //! More examples can be found in the example folder: [examples](https://github.com/mitsuhiko/procspawn/tree/master/examples)
 
-use serde::{de::DeserializeOwned, Serialize};
-
 #[macro_use]
 mod proc;
 
@@ -128,28 +126,7 @@ pub mod testsupport;
 pub use self::core::{assert_spawn_is_safe, init, ProcConfig};
 pub use self::error::{Location, PanicInfo, SpawnError};
 pub use self::pool::{Pool, PoolBuilder};
-pub use self::proc::{Builder, JoinHandle};
+pub use self::proc::{spawn, Builder, JoinHandle};
 
 #[cfg(feature = "json")]
 pub use self::json::Json;
-
-/// Spawn a new process to run a function with some payload.
-///
-/// ```rust,no_run
-/// // call this early in your main() function.  This is where all spawned
-/// // functions will be invoked.
-/// procspawn::init();
-///
-/// let data = vec![1, 2, 3, 4];
-/// let handle = procspawn::spawn(data, |data| {
-///     println!("Received data {:?}", &data);
-///     data.into_iter().sum::<i64>()
-/// });
-/// let result = handle.join().unwrap();
-/// ```
-pub fn spawn<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
-    args: A,
-    f: fn(A) -> R,
-) -> JoinHandle<R> {
-    Builder::new().spawn(args, f)
-}
