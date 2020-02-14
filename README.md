@@ -61,8 +61,7 @@ The following feature flags exist:
   backtraces are captured with the `backtrace-rs` crate and serialized
   across process boundaries.
 * `test-support`: when this feature is enabled procspawn can be used
-  with rusttest.  See [`enable_test_support!`](https://docs.rs/procspawn/latest/procspawn/macro.enable_test_support.html)
-  for more information.
+  with rusttest.  See [`testing`](https://docs.rs/procspawn/latest/procspawn/#testing) for more information.
 * `json`: enables optional JSON serialization.  For more information see
   [Bincode Limitations](https://docs.rs/procspawn/latest/procspawn/#bincode-limitations).
 
@@ -74,6 +73,27 @@ which make some serde features incompatible with it.  Most notably if you
 use `#[serde(flatten)]` data cannot be sent across the processes.  To
 work around this you can enable the `json` feature and wrap affected objects
 in the [`Json`](https://docs.rs/procspawn/latest/procspawn/struct.Json.html) wrapper to force JSON serialization.
+
+## Testing
+
+Due to limitations of the rusttest testing system there are some
+restrictions to how this crate operates.  First of all you need to enable
+the `test-support` feature for `procspawn` to work with rusttest at all.
+Secondly your tests need to invoke the
+[`enable_test_support!`](https://docs.rs/procspawn/latest/procspawn/macro.enable_test_support.html) macro once
+top-level.
+
+With this done the following behavior applies:
+
+* Tests behave as if `procspawn::init` was called (that means with the
+  default arguments).  Other configuration is not supported.
+* procspawn will register a dummy test (named `procspawn_test_helper`)
+  which doesn't do anything when called directly, but acts as the spawning
+  helper for all `spawn` calls.
+* stdout is silenced by default unless `--show-output` or `--nocapture`
+  is passed to tests.
+* when trying to spawn with intercepted `stdout` be aware that there is
+  extra noise that will be emitted by rusttest.
 
 ## Shared Libraries
 
