@@ -246,7 +246,8 @@ fn bootstrap_ipc(token: String, config: &ProcConfig) {
         init_panic_hook(config.backtrace_capture());
     }
 
-    let connection_bootstrap: IpcSender<IpcSender<MarshalledCall>> = match IpcSender::connect(token) {
+    let connection_bootstrap: IpcSender<IpcSender<MarshalledCall>> = match IpcSender::connect(token)
+    {
         Ok(sender) => sender,
         Err(err) => {
             if !is_benign_bootstrap_error(&err) {
