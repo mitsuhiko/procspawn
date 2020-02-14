@@ -93,6 +93,19 @@
 //! * when trying to spawn with intercepted `stdout` be aware that there is
 //!   extra noise that will be emitted by rusttest.
 //!
+//! Example:
+//!
+//! ```rust,no_run
+//! procspawn::enable_test_support!();
+//!
+//! #[test]
+//! fn test_basic() {
+//!     let handle = procspawn::spawn((1, 2), |(a, b)| a + b);
+//!     let value = handle.join().unwrap();
+//!     assert_eq!(value, 3);
+//! }
+//! ```
+//!
 //! # Shared Libraries
 //!
 //! `procspawn` uses the [`findshlibs`](https://github.com/gimli-rs/findshlibs)
