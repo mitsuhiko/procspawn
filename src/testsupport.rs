@@ -1,4 +1,5 @@
 #![cfg(feature = "test-support")]
+use std::env;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -38,14 +39,22 @@ pub fn enable() {
     mark_initialized();
 }
 
-pub fn update_command_for_tests(cmd: &mut Command) -> bool {
+pub struct TestMode {
+    pub can_pass_args: bool,
+    pub should_silence_stdout: bool,
+}
+
+pub fn update_command_for_tests(cmd: &mut Command) -> Option<TestMode> {
     if TEST_MODE.load(Ordering::SeqCst) {
         cmd.arg("procspawn_test_helper");
         cmd.arg("--exact");
         cmd.arg("--test-threads=1");
         cmd.arg("-q");
-        true
+        Some(TestMode {
+            can_pass_args: false,
+            should_silence_stdout: !env::args().any(|x| x == "--show-output" || x == "--nocapture"),
+        })
     } else {
-        false
+        None
     }
 }

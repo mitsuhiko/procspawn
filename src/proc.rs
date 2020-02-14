@@ -247,14 +247,20 @@ impl Builder {
             }
         }
 
-        let can_pass_args = {
+        let (can_pass_args, should_silence_stdout) = {
             #[cfg(feature = "test-support")]
             {
-                !crate::testsupport::update_command_for_tests(&mut child)
+                match crate::testsupport::update_command_for_tests(&mut child) {
+                    None => (true, false),
+                    Some(crate::testsupport::TestMode {
+                        can_pass_args,
+                        should_silence_stdout,
+                    }) => (can_pass_args, should_silence_stdout),
+                }
             }
             #[cfg(not(feature = "test-support"))]
             {
-                true
+                (true, false)
             }
         };
 
@@ -267,6 +273,8 @@ impl Builder {
         }
         if let Some(stdout) = self.stdout {
             child.stdout(stdout);
+        } else if should_silence_stdout {
+            child.stdout(Stdio::null());
         }
         if let Some(stderr) = self.stderr {
             child.stderr(stderr);
