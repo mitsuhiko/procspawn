@@ -62,6 +62,7 @@
 //!   with rusttest.  See [`testing`](#testing) for more information.
 //! * `json`: enables optional JSON serialization.  For more information see
 //!   [Bincode Limitations](#bincode-limitations).
+//! * `async`: enables support for the async methods.
 //!
 //! # Bincode Limitations
 //!

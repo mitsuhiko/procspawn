@@ -21,7 +21,7 @@ test-support = ["ctor"]
 json = ["serde_json"]
 safe-shared-libraries = ["findshlibs"]
 async = ["futures"]
-__async-executor = ["futures/executor"]
+async-executor = ["async", "futures/executor"]
 
 [dependencies]
 ipc-channel = "0.13.0"
@@ -39,7 +39,7 @@ required-features = ["backtrace"]
 
 [[example]]
 name = "async"
-required-features = ["async", "__async-executor"]
+required-features = ["async", "async-executor"]
 
 [[example]]
 name = "bad-serialization"

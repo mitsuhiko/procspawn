@@ -64,6 +64,8 @@ pub enum AsyncJoinHandleInner<T> {
 ///
 /// Unlike a normal [`JoinHandle`](struct.JoinHandle.html) dropping an async
 /// handle will kill the process.  It *must* be awaited.
+///
+/// This requires the `async` feature.
 pub struct AsyncJoinHandle<T> {
     pub(crate) inner: Result<AsyncJoinHandleInner<T>, SpawnError>,
 }
@@ -139,7 +141,12 @@ impl<T: Serialize + DeserializeOwned> AsyncJoinHandle<T> {
         }
     }
 
-    /// Joins the handle.
+    /// Joins the handle and returns the result.
+    ///
+    /// Note that unlike with a sync spawn there is no separate API to join
+    /// with a timeout.  Use your executor's timeout functionality for this.
+    /// Since dropping the join handle will in any case terminate the process
+    /// this will have the same effect.
     pub async fn join_async(mut self) -> Result<T, SpawnError> {
         match self.inner {
             Ok(AsyncJoinHandleInner::Process(ref mut handle)) => handle.join().await,
@@ -148,7 +155,11 @@ impl<T: Serialize + DeserializeOwned> AsyncJoinHandle<T> {
     }
 }
 
-/// Spawn a new process to run a function with some payload.
+/// Spawn a new process to run a function with some payload (async).
+///
+/// This is the async equivalent of [`spawn`](fn.spawn.html).
+///
+/// This requires the `async` feature.
 pub fn spawn_async<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
     args: A,
     f: fn(A) -> R,

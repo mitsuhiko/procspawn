@@ -219,7 +219,9 @@ impl Builder {
         }
     }
 
-    /// Like `spawn` but async.
+    /// Spawns the process (async).
+    ///
+    /// This is the async equivalent of [`spawn`](#method.spawn).
     #[cfg(feature = "async")]
     pub fn spawn_async<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
         &mut self,
