@@ -153,6 +153,9 @@ mod pool;
 #[cfg(feature = "json")]
 mod json;
 
+#[cfg(feature = "async")]
+mod asyncsupport;
+
 #[doc(hidden)]
 pub mod testsupport;
 
@@ -163,3 +166,6 @@ pub use self::proc::{spawn, Builder, JoinHandle};
 
 #[cfg(feature = "json")]
 pub use self::json::Json;
+
+#[cfg(feature = "async")]
+pub use self::asyncsupport::{spawn_async, AsyncJoinHandle};
