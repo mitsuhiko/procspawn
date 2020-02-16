@@ -20,6 +20,8 @@ default = ["backtrace", "safe-shared-libraries"]
 test-support = ["ctor"]
 json = ["serde_json"]
 safe-shared-libraries = ["findshlibs"]
+async = ["futures"]
+async-executor = ["async", "futures/executor"]
 
 [dependencies]
 ipc-channel = "0.13.0"
@@ -29,10 +31,15 @@ libc = "0.2.66"
 ctor = { version = "0.1.12", optional = true }
 serde_json = { version = "1.0.47", optional = true }
 findshlibs = { version = "0.5.0", optional = true }
+futures = { version = "0.3.4", optional = true, default-features = false, features = ["std"] }
 
 [[example]]
 name = "panic"
 required-features = ["backtrace"]
+
+[[example]]
+name = "async"
+required-features = ["async", "async-executor"]
 
 [[example]]
 name = "bad-serialization"

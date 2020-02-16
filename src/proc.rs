@@ -17,6 +17,9 @@ use crate::core::{assert_spawn_okay, should_pass_args, MarshalledCall, ENV_NAME}
 use crate::error::{PanicInfo, SpawnError};
 use crate::pool::PooledHandle;
 
+#[cfg(feature = "async")]
+use crate::asyncsupport::AsyncJoinHandle;
+
 type PreExecFunc = dyn FnMut() -> io::Result<()> + Send + Sync + 'static;
 
 #[derive(Clone)]
@@ -177,6 +180,8 @@ impl Builder {
 
     /// Captures the `stdin` of the spawned process, allowing you to manually
     /// send data via `JoinHandle::stdin`
+    ///
+    /// For async spawns sending data is currently not supported.
     pub fn stdin<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
         self.stdin = Some(cfg.into());
         self
@@ -184,6 +189,8 @@ impl Builder {
 
     /// Captures the `stdout` of the spawned process, allowing you to manually
     /// receive data via `JoinHandle::stdout`
+    ///
+    /// For async spawns retrieving the data is currently not supported.
     pub fn stdout<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
         self.stdout = Some(cfg.into());
         self
@@ -191,6 +198,8 @@ impl Builder {
 
     /// Captures the `stderr` of the spawned process, allowing you to manually
     /// receive data via `JoinHandle::stderr`
+    ///
+    /// For async spawns retrieving the data is currently not supported.
     pub fn stderr<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
         self.stderr = Some(cfg.into());
         self
@@ -204,7 +213,25 @@ impl Builder {
     ) -> JoinHandle<R> {
         assert_spawn_okay();
         JoinHandle {
-            inner: mem::replace(self, Default::default()).spawn_helper(args, func),
+            inner: mem::replace(self, Default::default())
+                .spawn_helper(args, func)
+                .map(JoinHandleInner::Process),
+        }
+    }
+
+    /// Spawns the process (async).
+    ///
+    /// This is the async equivalent of [`spawn`](#method.spawn).
+    #[cfg(feature = "async")]
+    pub fn spawn_async<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
+        &mut self,
+        args: A,
+        func: fn(A) -> R,
+    ) -> AsyncJoinHandle<R> {
+        assert_spawn_okay();
+        match mem::replace(self, Default::default()).spawn_helper(args, func) {
+            Ok(handle) => AsyncJoinHandle::from_process_handle(handle),
+            Err(err) => AsyncJoinHandle::<R>::from_error(err),
         }
     }
 
@@ -212,7 +239,7 @@ impl Builder {
         self,
         args: A,
         func: fn(A) -> R,
-    ) -> Result<JoinHandleInner<R>, SpawnError> {
+    ) -> Result<ProcessHandle<R>, SpawnError> {
         let (server, token) = IpcOneShotServer::<IpcSender<MarshalledCall>>::new()?;
         let me = if cfg!(target_os = "linux") {
             // will work even if exe is moved
@@ -288,11 +315,11 @@ impl Builder {
         args_tx.send(args)?;
 
         tx.send(MarshalledCall::marshal::<A, R>(func, args_rx, return_tx))?;
-        Ok(JoinHandleInner::Process(ProcessHandle {
+        Ok(ProcessHandle {
             recv: return_rx,
             state: Arc::new(ProcessHandleState::new(Some(process.id()))),
             process,
-        }))
+        })
     }
 }
 
@@ -330,9 +357,9 @@ impl ProcessHandleState {
 }
 
 pub struct ProcessHandle<T> {
-    recv: IpcReceiver<Result<T, PanicInfo>>,
-    process: process::Child,
-    state: Arc<ProcessHandleState>,
+    pub(crate) recv: IpcReceiver<Result<T, PanicInfo>>,
+    pub(crate) process: process::Child,
+    pub(crate) state: Arc<ProcessHandleState>,
 }
 
 fn is_ipc_timeout(err: &ipc_channel::Error) -> bool {
@@ -467,7 +494,7 @@ impl<T> JoinHandle<T> {
     pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
         match self.inner {
             Ok(JoinHandleInner::Process(ref mut process)) => process.stdin(),
-            Ok(JoinHandleInner::Pooled { .. }) => None,
+            Ok(JoinHandleInner::Pooled(..)) => None,
             Err(_) => None,
         }
     }
@@ -476,7 +503,7 @@ impl<T> JoinHandle<T> {
     pub fn stdout(&mut self) -> Option<&mut ChildStdout> {
         match self.inner {
             Ok(JoinHandleInner::Process(ref mut process)) => process.stdout(),
-            Ok(JoinHandleInner::Pooled { .. }) => None,
+            Ok(JoinHandleInner::Pooled(..)) => None,
             Err(_) => None,
         }
     }
@@ -485,7 +512,7 @@ impl<T> JoinHandle<T> {
     pub fn stderr(&mut self) -> Option<&mut ChildStderr> {
         match self.inner {
             Ok(JoinHandleInner::Process(ref mut process)) => process.stderr(),
-            Ok(JoinHandleInner::Pooled { .. }) => None,
+            Ok(JoinHandleInner::Pooled(..)) => None,
             Err(_) => None,
         }
     }
