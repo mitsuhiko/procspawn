@@ -42,7 +42,7 @@ impl<T: Serialize + DeserializeOwned> AsyncProcessHandle<T> {
                 .to::<Result<T, PanicInfo>>()
                 .expect("return channel format mismatch")
                 .map_err(|x| x.into()),
-            Err(_) => Err(SpawnError::new_cancelled()),
+            Err(_) => Err(SpawnError::new_remote_close()),
         };
         self.state.exited.store(true, Ordering::SeqCst);
         rv

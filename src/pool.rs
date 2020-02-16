@@ -53,7 +53,7 @@ impl<T: Serialize + DeserializeOwned> PooledHandle<T> {
         match self.waiter_rx.recv() {
             Ok(Ok(rv)) => Ok(rv),
             Ok(Err(err)) => Err(err),
-            Err(..) => Err(io::Error::new(io::ErrorKind::BrokenPipe, "process went away").into()),
+            Err(..) => Err(SpawnError::new_remote_close()),
         }
     }
 
@@ -65,9 +65,7 @@ impl<T: Serialize + DeserializeOwned> PooledHandle<T> {
                 self.kill().ok();
                 Err(SpawnError::new_timeout())
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                Err(io::Error::new(io::ErrorKind::BrokenPipe, "process went away").into())
-            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(SpawnError::new_remote_close()),
         }
     }
 }

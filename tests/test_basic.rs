@@ -35,6 +35,9 @@ fn test_kill() {
         thread::sleep(Duration::from_secs(10));
     });
     handle.kill().unwrap();
+    let err = handle.join().unwrap_err();
+    dbg!(&err);
+    assert!(err.is_remote_close());
 }
 
 #[test]

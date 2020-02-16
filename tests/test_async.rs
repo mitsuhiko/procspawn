@@ -27,5 +27,5 @@ fn test_async_kill() {
         handle.join_async().await
     });
 
-    assert!(result.unwrap_err().is_cancellation());
+    assert!(result.unwrap_err().is_remote_close());
 }

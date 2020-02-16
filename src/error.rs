@@ -169,6 +169,15 @@ impl SpawnError {
         }
     }
 
+    pub(crate) fn new_remote_close() -> SpawnError {
+        SpawnError {
+            kind: SpawnErrorKind::IpcChannelClosed(io::Error::new(
+                io::ErrorKind::ConnectionReset,
+                "remote closed",
+            )),
+        }
+    }
+
     pub(crate) fn new_cancelled() -> SpawnError {
         SpawnError {
             kind: SpawnErrorKind::Cancelled,
