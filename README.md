@@ -64,6 +64,7 @@ The following feature flags exist:
   with rusttest.  See [`testing`](https://docs.rs/procspawn/latest/procspawn/#testing) for more information.
 * `json`: enables optional JSON serialization.  For more information see
   [Bincode Limitations](https://docs.rs/procspawn/latest/procspawn/#bincode-limitations).
+* `async`: enables support for the async methods.
 
 ## Bincode Limitations
 
@@ -95,6 +96,19 @@ With this done the following behavior applies:
 * when trying to spawn with intercepted `stdout` be aware that there is
   extra noise that will be emitted by rusttest.
 
+Example:
+
+```rust
+procspawn::enable_test_support!();
+
+#[test]
+fn test_basic() {
+    let handle = procspawn::spawn((1, 2), |(a, b)| a + b);
+    let value = handle.join().unwrap();
+    assert_eq!(value, 3);
+}
+```
+
 ## Shared Libraries
 
 `procspawn` uses the [`findshlibs`](https://github.com/gimli-rs/findshlibs)
@@ -108,6 +122,19 @@ invoke functions from shared libraries and no validation is performed.
 This in normal circumstances should be okay but you need to validate this.
 Spawning processes will be disabled if the feature is not enabled until
 you call the [`assert_spawn_is_safe`](https://docs.rs/procspawn/latest/procspawn/fn.assert_spawn_is_safe.html) function.
+
+## Async Support
+
+When the `async` feature is enabled a `spawn_async` function becomes
+available which gives you an async version of a join handle.  There are
+however a few limitations / differences with async support currently:
+
+* pools are not supported. Right now you can only spawn one-off processes.
+* replacing stdin/stdout/stderr with a pipe is not supported.  The async
+  join handle does not give you access to these streams.
+* when you drop a join handle the process is being terminated.
+* there is no native join with timeout support.  You can use your executors
+  timeout functionality to achieve the same.
 
 ## Platform Support
 
