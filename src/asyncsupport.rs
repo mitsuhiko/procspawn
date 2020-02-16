@@ -4,13 +4,15 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use futures::channel::oneshot;
+use ipc_channel::ipc;
+use ipc_channel::router::ROUTER;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error::{PanicInfo, SpawnError};
 use crate::proc::{Builder, ProcessHandle, ProcessHandleState};
 
 pub struct AsyncProcessHandle<T> {
-    recv: oneshot::Receiver<ipc_channel::ipc::OpaqueIpcMessage>,
+    recv: oneshot::Receiver<ipc::OpaqueIpcMessage>,
     process: process::Child,
     state: Arc<ProcessHandleState>,
     _marker: std::marker::PhantomData<T>,
@@ -123,7 +125,7 @@ impl<T: Serialize + DeserializeOwned> AsyncJoinHandle<T> {
         } = handle;
         let (tx, rx) = futures::channel::oneshot::channel();
         let mut tx = Some(tx);
-        ipc_channel::router::ROUTER.add_route(
+        ROUTER.add_route(
             recv.to_opaque(),
             Box::new(move |msg| {
                 if let Some(tx) = tx.take() {
