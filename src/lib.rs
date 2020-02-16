@@ -1,17 +1,31 @@
 //! This crate provides the ability to spawn processes with a function similar
 //! to `thread::spawn`.
 //!
-//! Unlike `thread::spawn` data cannot be passed in closures but must be
-//! explicitly passed as single argument which must be [`serde`](https://serde.rs/)
-//! serializable.  The return value from the spawned closure also must be
-//! serializable and can then be unwrapped from the returned join handle.
-//! If your function has data enclosed it will panic at runtime.
+//! Unlike `thread::spawn` data cannot be passed by the use of closures.  Instead
+//! if must be explicitly passed as serializable object (specifically it must be
+//! [`serde`](https://serde.rs/) serializable).  The return value from the
+//! spawned closure also must be serializable and can then be retrieved from
+//! the returned join handle.
+//!
+//! If the spawned functiom causes a panic it will also be serialized across
+//! the process boundaries.
+//!
+//! # Example
+//!
+//! First for all of this to work you need to invoke `procspawn::init` at a
+//! point early in your program (somewhere at the beginning of the main function).
+//! Whatever happens before that point also happens in your spawned functions.
+//!
+//! Subprocesses are by default invoked with the same arguments and environment
+//! variables as the parent process.
 //!
 //! ```rust,no_run
-//! // call this early in your main() function.  This is where all spawned
-//! // functions will be invoked.
 //! procspawn::init();
+//! ```
 //!
+//! Now you can start spawning functions:
+//!
+//! ```rust,no_run
 //! let data = vec![1, 2, 3, 4];
 //! let handle = procspawn::spawn(data, |data| {
 //!     println!("Received data {:?}", &data);
@@ -22,10 +36,12 @@
 //!
 //! Because `procspawn` will invoke a subprocess and there is currently no
 //! reliable way to intercept `main` in Rust it's necessary for you to call
-//! [`procspawn::init`](fn.init.html) at an early time in the program. The
-//! place where this will be called is the entrypoint for the subprocesses
-//! spawned.  The subprocess is invoked with the same arguments and environment
-//! variables by default.
+//! [`procspawn::init`](fn.init.html) explicitly an early time in the program.
+//!
+//! Alternatively you can use the [`ProcConfig`](struct.ProcConfig.html)
+//! builder object to initialize the process which gives you some extra
+//! abilities to customize the processes spawned.  This for instance lets you
+//! disable the default panic handling.
 //!
 //! [`spawn`](fn.spawn.html) can pass arbitrary serializable data, including
 //! IPC senders and receivers from the [`ipc-channel`](https://crates.io/crates/ipc-channel)
@@ -37,7 +53,7 @@
 //! For more uses it's a better idea to spawn a [`Pool`](struct.Pool.html)
 //! which will keep processes around for reuse.  Between calls the processes
 //! will stay around which also means the can keep state between calls if
-//! needed.
+//! needed.  Pools are currently not supported for async usage.
 //!
 //! # Panics
 //!
@@ -141,7 +157,7 @@
 //! used for the `safe-shared-libraries` feature also does not yet support
 //! Windows.
 //!
-//! # Examples
+//! # More Examples
 //!
 //! Here are some examples of `procspawn` in action:
 //!
@@ -153,6 +169,8 @@
 //!   shows how you can wait on a process with timeouts.
 //! * [bad-serialization.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/bad-serialization.rs):
 //!   shows JSON based workarounds for bincode limitations.
+//! * [async.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/async.rs):
+//!   demonstrates async usage.
 //!
 //! More examples can be found in the example folder: [examples](https://github.com/mitsuhiko/procspawn/tree/master/examples)
 

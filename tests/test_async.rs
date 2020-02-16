@@ -8,9 +8,7 @@ procspawn::enable_test_support!();
 #[test]
 fn test_async_basic() {
     let result = block_on(async {
-        let handle = procspawn::Builder::new().spawn_async((1u32, 2u32), |(a, b)| {
-            a + b
-        });
+        let handle = procspawn::Builder::new().spawn_async((1u32, 2u32), |(a, b)| a + b);
         handle.join_async().await
     });
 
