@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.0
+
+* Added basic support for using this crate with async/await
+  ([#24](https://github.com/mitsuhiko/procspawn/pull/24))
+
 ## 0.6.0
 
 * Calls from the test support not have stdout disabled by default
