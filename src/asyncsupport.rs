@@ -123,7 +123,7 @@ impl<T: Serialize + DeserializeOwned> AsyncJoinHandle<T> {
             state,
             process,
         } = handle;
-        let (tx, rx) = futures::channel::oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         let mut tx = Some(tx);
         ROUTER.add_route(
             recv.to_opaque(),
