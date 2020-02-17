@@ -112,8 +112,6 @@ With this done the following behavior applies:
 * when trying to spawn with intercepted `stdout` be aware that there is
   extra noise that will be emitted by rusttest.
 
-Example:
-
 ```rust
 procspawn::enable_test_support!();
 
@@ -151,6 +149,21 @@ however a few limitations / differences with async support currently:
 * when you drop a join handle the process is being terminated.
 * there is no native join with timeout support.  You can use your executors
   timeout functionality to achieve the same.
+
+## Macros
+
+Alternatively the [`spawn!`](https://docs.rs/procspawn/latest/procspawn/macro.spawn.html) macro can be used which can
+make passing more than one argument easier:
+
+```rust
+let a = 42u32;
+let b = 23u32;
+let c = 1;
+let handle = procspawn::spawn!((a => base, b, mut c) || -> Result<_, ()> {
+    c += 1;
+    Ok(base + b + c)
+});
+```
 
 ## Platform Support
 
