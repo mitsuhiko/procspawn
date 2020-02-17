@@ -110,8 +110,6 @@
 //! * when trying to spawn with intercepted `stdout` be aware that there is
 //!   extra noise that will be emitted by rusttest.
 //!
-//! Example:
-//!
 //! ```rust,no_run
 //! procspawn::enable_test_support!();
 //!
@@ -150,6 +148,21 @@
 //! * there is no native join with timeout support.  You can use your executors
 //!   timeout functionality to achieve the same.
 //!
+//! # Macros
+//!
+//! Alternatively the [`spawn!`](macro.spawn.html) macro can be used which can
+//! make passing more than one argument easier:
+//!
+//! ```rust,no_run
+//! let a = 42u32;
+//! let b = 23u32;
+//! let c = 1;
+//! let handle = procspawn::spawn!((a => base, b, mut c) || -> Result<_, ()> {
+//!     c += 1;
+//!     Ok(base + b + c)
+//! });
+//! ```
+//!
 //! # Platform Support
 //!
 //! Currently this crate only supports macOS and Linux because ipc-channel
@@ -171,6 +184,8 @@
 //!   shows JSON based workarounds for bincode limitations.
 //! * [async.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/async.rs):
 //!   demonstrates async usage.
+//! * [macro.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/macro.rs):
+//!   demonstrates async usage.
 //!
 //! More examples can be found in the example folder: [examples](https://github.com/mitsuhiko/procspawn/tree/master/examples)
 
@@ -190,6 +205,8 @@ mod asyncsupport;
 
 #[doc(hidden)]
 pub mod testsupport;
+
+mod macros;
 
 pub use self::core::{assert_spawn_is_safe, init, ProcConfig};
 pub use self::error::{Location, PanicInfo, SpawnError};
