@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.0
+
+* Added support for `spawn!` and `spawn_async!` macros
+  ([#25](https://github.com/mitsuhiko/procspawn/pull/25))
+
 ## 0.7.0
 
 * Added basic support for using this crate with async/await
