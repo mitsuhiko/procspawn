@@ -147,12 +147,12 @@
 //! * when you drop a join handle the process is being terminated.
 //! * there is no native join with timeout support.  You can use your executors
 //!   timeout functionality to achieve the same.
-//! 
+//!
 //! # Macros
-//! 
+//!
 //! Alternatively the [`spawn!`](macro.spawn.html) macro can be used which can
 //! make passing more than one argument easier:
-//! 
+//!
 //! ```rust,no_run
 //! let a = 42u32;
 //! let b = 23u32;
