@@ -171,6 +171,8 @@
 //!   shows JSON based workarounds for bincode limitations.
 //! * [async.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/async.rs):
 //!   demonstrates async usage.
+//! * [macro.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/macro.rs):
+//!   demonstrates async usage.
 //!
 //! More examples can be found in the example folder: [examples](https://github.com/mitsuhiko/procspawn/tree/master/examples)
 
@@ -190,6 +192,8 @@ mod asyncsupport;
 
 #[doc(hidden)]
 pub mod testsupport;
+
+mod macros;
 
 pub use self::core::{assert_spawn_is_safe, init, ProcConfig};
 pub use self::error::{Location, PanicInfo, SpawnError};
