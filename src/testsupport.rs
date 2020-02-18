@@ -7,6 +7,9 @@ use crate::core::mark_initialized;
 
 static TEST_MODE: AtomicBool = AtomicBool::new(false);
 
+// we need this.
+pub use ctor::ctor;
+
 /// Supports the use of procspawn in tests.
 ///
 /// Due to limitations in rusttest it's currently not easily possible to use
@@ -21,7 +24,7 @@ static TEST_MODE: AtomicBool = AtomicBool::new(false);
 #[macro_export]
 macro_rules! enable_test_support {
     () => {
-        #[ctor::ctor]
+        #[$crate::testsupport::ctor]
         #[used]
         fn __procspawn_test_support_init() {
             $crate::testsupport::enable();
