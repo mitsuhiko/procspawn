@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1
+
+* Fixed test support not working correctly for other crates.
+  ([#26](https://github.com/mitsuhiko/procspawn/pull/26))
+
 ## 0.8.0
 
 * Added support for `spawn!` and `spawn_async!` macros
