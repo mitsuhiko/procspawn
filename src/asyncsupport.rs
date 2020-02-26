@@ -27,11 +27,15 @@ impl<T> AsyncProcessHandle<T> {
         if self.state.exited.load(Ordering::SeqCst) {
             return Ok(());
         }
+
         let rv = self.process.kill().map_err(Into::into);
-        // this should be instant since we just killed the process.
+        self.wait(); // this should be instant since we just killed the process.
+        rv
+    }
+
+    fn wait(&mut self) {
         self.process.wait().ok();
         self.state.exited.store(true, Ordering::SeqCst);
-        rv
     }
 }
 
@@ -44,7 +48,8 @@ impl<T: Serialize + DeserializeOwned> AsyncProcessHandle<T> {
                 .map_err(|x| x.into()),
             Err(_) => Err(SpawnError::new_remote_close()),
         };
-        self.state.exited.store(true, Ordering::SeqCst);
+
+        self.wait();
         rv
     }
 }

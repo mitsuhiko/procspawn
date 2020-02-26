@@ -383,9 +383,9 @@ impl<T> ProcessHandle<T> {
         if self.state.exited.load(Ordering::SeqCst) {
             return Ok(());
         }
+
         let rv = self.process.kill().map_err(Into::into);
-        self.process.wait().ok();
-        self.state.exited.store(true, Ordering::SeqCst);
+        self.wait();
         rv
     }
 
@@ -400,12 +400,17 @@ impl<T> ProcessHandle<T> {
     pub fn stderr(&mut self) -> Option<&mut ChildStderr> {
         self.process.stderr.as_mut()
     }
+
+    fn wait(&mut self) {
+        self.process.wait().ok();
+        self.state.exited.store(true, Ordering::SeqCst);
+    }
 }
 
 impl<T: Serialize + DeserializeOwned> ProcessHandle<T> {
     pub fn join(&mut self) -> Result<T, SpawnError> {
         let rv = self.recv.recv()?.map_err(Into::into);
-        self.state.exited.store(true, Ordering::SeqCst);
+        self.wait();
         rv
     }
 
@@ -431,7 +436,8 @@ impl<T: Serialize + DeserializeOwned> ProcessHandle<T> {
                 Err(err) => return Err(err.into()),
             }
         };
-        self.state.exited.store(true, Ordering::SeqCst);
+
+        self.wait();
         rv
     }
 }
