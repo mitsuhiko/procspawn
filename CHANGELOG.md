@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.2
+
+* Detect path to test module in case enable test mode is in a
+  submodule.
+  ([#28](https://github.com/mitsuhiko/procspawn/pull/28))
+* Fixed zombies being left behind.
+  ([#27](https://github.com/mitsuhiko/procspawn/pull/27))
+
 ## 0.8.1
 
 * Fixed test support not working correctly for other crates.
