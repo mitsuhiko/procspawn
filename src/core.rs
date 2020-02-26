@@ -246,20 +246,22 @@ fn bootstrap_ipc(token: String, config: &ProcConfig) {
         init_panic_hook(config.backtrace_capture());
     }
 
-    let connection_bootstrap: IpcSender<IpcSender<MarshalledCall>> = match IpcSender::connect(token)
     {
-        Ok(sender) => sender,
-        Err(err) => {
-            if !is_benign_bootstrap_error(&err) {
-                Err::<(), _>(err).expect("could not bootstrap ipc connection");
-            }
-            process::exit(1);
-        }
-    };
-    let (tx, rx) = ipc::channel().unwrap();
-    connection_bootstrap.send(tx).unwrap();
-    let marshalled_call = rx.recv().unwrap();
-    marshalled_call.call(config.panic_handling);
+        let connection_bootstrap: IpcSender<IpcSender<MarshalledCall>> =
+            match IpcSender::connect(token) {
+                Ok(sender) => sender,
+                Err(err) => {
+                    if !is_benign_bootstrap_error(&err) {
+                        Err::<(), _>(err).expect("could not bootstrap ipc connection");
+                    }
+                    process::exit(1);
+                }
+            };
+        let (tx, rx) = ipc::channel().unwrap();
+        connection_bootstrap.send(tx).unwrap();
+        let marshalled_call = rx.recv().unwrap();
+        marshalled_call.call(config.panic_handling);
+    }
     process::exit(0);
 }
 
