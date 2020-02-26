@@ -362,15 +362,10 @@ pub struct ProcessHandle<T> {
     pub(crate) state: Arc<ProcessHandleState>,
 }
 
-fn is_ipc_timeout(err: &ipc_channel::Error) -> bool {
-    if let ipc_channel::ErrorKind::Io(ref io) = &**err {
-        match io.kind() {
-            io::ErrorKind::TimedOut => true,
-            io::ErrorKind::WouldBlock => true,
-            _ => false,
-        }
-    } else {
-        false
+fn is_ipc_timeout(err: &ipc_channel::ipc::TryRecvError) -> bool {
+    match err {
+        ipc_channel::ipc::TryRecvError::Empty => true,
+        _ => false,
     }
 }
 

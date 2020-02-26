@@ -1,7 +1,8 @@
 use std::fmt;
 use std::io;
 
-use ipc_channel::{Error as IpcError, ErrorKind as IpcErrorKind};
+use ipc_channel::ipc::{IpcError, TryRecvError};
+use ipc_channel::{Error as BincodeError, ErrorKind as BincodeErrorKind};
 use serde::{Deserialize, Serialize};
 
 /// Represents a panic caugh across processes.
@@ -119,7 +120,7 @@ pub struct SpawnError {
 
 #[derive(Debug)]
 enum SpawnErrorKind {
-    Ipc(IpcError),
+    Bincode(BincodeError),
     Io(io::Error),
     Panic(PanicInfo),
     IpcChannelClosed(io::Error),
@@ -162,10 +163,9 @@ impl SpawnError {
 
     /// True if this means the remote side closed.
     pub fn is_remote_close(&self) -> bool {
-        if let SpawnErrorKind::IpcChannelClosed(..) = self.kind {
-            true
-        } else {
-            false
+        match self.kind {
+            SpawnErrorKind::IpcChannelClosed(..) => true,
+            _ => false,
         }
     }
 
@@ -194,7 +194,7 @@ impl SpawnError {
 impl std::error::Error for SpawnError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self.kind {
-            SpawnErrorKind::Ipc(ref err) => Some(&*err),
+            SpawnErrorKind::Bincode(ref err) => Some(&*err),
             SpawnErrorKind::Io(ref err) => Some(&*err),
             SpawnErrorKind::Panic(_) => None,
             SpawnErrorKind::Cancelled => None,
@@ -207,7 +207,7 @@ impl std::error::Error for SpawnError {
 impl fmt::Display for SpawnError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.kind {
-            SpawnErrorKind::Ipc(_) => write!(f, "process spawn error: ipc error"),
+            SpawnErrorKind::Bincode(_) => write!(f, "process spawn error: bincode error"),
             SpawnErrorKind::Io(_) => write!(f, "process spawn error: i/o error"),
             SpawnErrorKind::Panic(ref p) => write!(f, "process spawn error: panic: {}", p),
             SpawnErrorKind::Cancelled => write!(f, "process spawn error: call cancelled"),
@@ -220,14 +220,34 @@ impl fmt::Display for SpawnError {
     }
 }
 
-impl From<IpcError> for SpawnError {
-    fn from(err: IpcError) -> SpawnError {
+impl From<BincodeError> for SpawnError {
+    fn from(err: BincodeError) -> SpawnError {
         // unwrap nested IO errors
-        if let IpcErrorKind::Io(io_err) = *err {
+        if let BincodeErrorKind::Io(io_err) = *err {
             return SpawnError::from(io_err);
         }
         SpawnError {
-            kind: SpawnErrorKind::Ipc(err),
+            kind: SpawnErrorKind::Bincode(err),
+        }
+    }
+}
+
+impl From<TryRecvError> for SpawnError {
+    fn from(err: TryRecvError) -> SpawnError {
+        match err {
+            TryRecvError::Empty => SpawnError::new_remote_close(),
+            TryRecvError::IpcError(err) => SpawnError::from(err),
+        }
+    }
+}
+
+impl From<IpcError> for SpawnError {
+    fn from(err: IpcError) -> SpawnError {
+        // unwrap nested IO errors
+        match err {
+            IpcError::Io(err) => SpawnError::from(err),
+            IpcError::Bincode(err) => SpawnError::from(err),
+            IpcError::Disconnected => SpawnError::new_remote_close(),
         }
     }
 }
