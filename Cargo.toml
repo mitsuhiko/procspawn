@@ -56,3 +56,7 @@ required-features = ["test-support"]
 [[test]]
 name = "test_async"
 required-features = ["test-support", "async-executor"]
+
+[[test]]
+name = "test_macros"
+required-features = ["test-support"]
