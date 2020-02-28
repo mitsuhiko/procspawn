@@ -50,6 +50,7 @@ testall:
 	cargo run --all-features --example async
 	cargo run --all-features --example macro
 	cargo run --all-features --example bad-serialization
+	cargo run --all-features --example custom-serialization
 	cargo run --all-features --example args -- 1 2 3
 .PHONY: testall
 

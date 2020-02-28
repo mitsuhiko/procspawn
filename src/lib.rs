@@ -206,6 +206,8 @@ mod asyncsupport;
 #[doc(hidden)]
 pub mod testsupport;
 
+mod serdesupport;
+
 mod macros;
 
 pub use self::core::{assert_spawn_is_safe, init, ProcConfig};
@@ -218,3 +220,5 @@ pub use self::json::Json;
 
 #[cfg(feature = "async")]
 pub use self::asyncsupport::{spawn_async, AsyncJoinHandle};
+
+pub use self::serdesupport::serde_in_ipc_mode;

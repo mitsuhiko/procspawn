@@ -13,6 +13,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::core::MarshalledCall;
 use crate::error::SpawnError;
 use crate::proc::{Builder, JoinHandle, JoinHandleInner, ProcCommon, ProcessHandleState};
+use crate::serdesupport::mark_procspawn_serde;
 
 type WaitFunc = Box<dyn FnOnce() -> bool + Send>;
 type NotifyErrorFunc = Box<dyn FnMut(SpawnError) + Send>;
@@ -159,11 +160,13 @@ impl Pool {
                 call,
                 shared.clone(),
                 Box::new(move || {
-                    if let Ok(rv) = return_rx.recv() {
-                        waiter_tx.send(rv.map_err(Into::into)).is_ok()
-                    } else {
-                        false
-                    }
+                    mark_procspawn_serde(|| {
+                        if let Ok(rv) = return_rx.recv() {
+                            waiter_tx.send(rv.map_err(Into::into)).is_ok()
+                        } else {
+                            false
+                        }
+                    })
                 }),
                 Box::new(move |error| {
                     error_waiter_tx.send(Err(error)).ok();
@@ -453,7 +456,7 @@ fn spawn_worker(
                     {
                         let mut call_tx = current_call_tx.lock().unwrap();
                         if let Some(ref mut call_tx) = *call_tx {
-                            match call_tx.send(call) {
+                            match mark_procspawn_serde(|| call_tx.send(call)) {
                                 Ok(()) => {}
                                 Err(..) => {
                                     restart = true;

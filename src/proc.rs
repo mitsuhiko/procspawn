@@ -16,6 +16,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::core::{assert_spawn_okay, should_pass_args, MarshalledCall, ENV_NAME};
 use crate::error::{PanicInfo, SpawnError};
 use crate::pool::PooledHandle;
+use crate::serdesupport::mark_procspawn_serde;
 
 #[cfg(feature = "async")]
 use crate::asyncsupport::AsyncJoinHandle;
@@ -314,7 +315,10 @@ impl Builder {
         let (return_tx, return_rx) = ipc::channel()?;
 
         tx.send(MarshalledCall::marshal::<A, R>(func, args_rx, return_tx))?;
-        args_tx.send(args)?;
+        mark_procspawn_serde(|| -> Result<_, SpawnError> {
+            args_tx.send(args)?;
+            Ok(())
+        })?;
 
         Ok(ProcessHandle {
             recv: return_rx,
@@ -405,7 +409,7 @@ impl<T> ProcessHandle<T> {
 
 impl<T: Serialize + DeserializeOwned> ProcessHandle<T> {
     pub fn join(&mut self) -> Result<T, SpawnError> {
-        let rv = self.recv.recv()?.map_err(Into::into);
+        let rv = mark_procspawn_serde(|| self.recv.recv())?.map_err(Into::into);
         self.wait();
         rv
     }
@@ -419,7 +423,7 @@ impl<T: Serialize + DeserializeOwned> ProcessHandle<T> {
         };
         let mut to_sleep = Duration::from_millis(1);
         let rv = loop {
-            match self.recv.try_recv() {
+            match mark_procspawn_serde(|| self.recv.try_recv()) {
                 Ok(rv) => break rv.map_err(Into::into),
                 Err(err) if is_ipc_timeout(&err) => {
                     if let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
