@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.4
+
+* Added pool support for macros.
+
 ## 0.8.3
 
 * Resolved a deadlock when large args are sent over the
