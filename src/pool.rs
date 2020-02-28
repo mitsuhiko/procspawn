@@ -143,8 +143,8 @@ impl Pool {
         self.assert_alive();
         let (args_tx, args_rx) = ipc::channel().unwrap();
         let (return_tx, return_rx) = ipc::channel().unwrap();
+
         let call = MarshalledCall::marshal::<A, R>(func, args_rx, return_tx);
-        args_tx.send(args).unwrap();
         let (waiter_tx, waiter_rx) = mpsc::sync_channel(0);
         let error_waiter_tx = waiter_tx.clone();
         self.shared.queued_count.fetch_add(1, Ordering::SeqCst);
@@ -170,6 +170,8 @@ impl Pool {
                 }),
             ))
             .ok();
+
+        args_tx.send(args).unwrap();
 
         JoinHandle {
             inner: Ok(JoinHandleInner::Pooled(PooledHandle { waiter_rx, shared })),

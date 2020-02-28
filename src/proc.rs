@@ -311,10 +311,11 @@ impl Builder {
         let (_rx, tx) = server.accept()?;
 
         let (args_tx, args_rx) = ipc::channel()?;
-        let (return_tx, return_rx) = ipc::channel::<Result<R, PanicInfo>>()?;
-        args_tx.send(args)?;
+        let (return_tx, return_rx) = ipc::channel()?;
 
         tx.send(MarshalledCall::marshal::<A, R>(func, args_rx, return_tx))?;
+        args_tx.send(args)?;
+
         Ok(ProcessHandle {
             recv: return_rx,
             state: Arc::new(ProcessHandleState::new(Some(process.id()))),
