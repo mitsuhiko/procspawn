@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.3
+
+* Resolved a deadlock when large args are sent over the
+  IPC boundary.
+  ([#31](https://github.com/mitsuhiko/procspawn/pull/31))
+
 ## 0.8.2
 
 * Detect path to test module in case enable test mode is in a

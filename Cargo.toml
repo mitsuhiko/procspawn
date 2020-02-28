@@ -1,6 +1,6 @@
 [package]
 name = "procspawn"
-version = "0.8.2"
+version = "0.8.3"
 authors = ["Armin Ronacher <armin.ronacher@active-4.com>", "Manish Goregaokar <manishsmail@gmail.com>"]
 edition = "2018"
 license = "MIT/Apache-2.0"
