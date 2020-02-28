@@ -319,7 +319,7 @@ impl MarshalledCall {
 unsafe fn run_func<A, R>(
     lib_name: &OsStr,
     fn_offset: isize,
-    recv: OpaqueIpcReceiver,
+    args_recv: OpaqueIpcReceiver,
     sender: OpaqueIpcSender,
     panic_handling: bool,
 ) where
@@ -328,7 +328,7 @@ unsafe fn run_func<A, R>(
 {
     let lib_offset = find_shared_library_offset_by_name(lib_name) as isize;
     let function: fn(A) -> R = mem::transmute(fn_offset + lib_offset as *const () as isize);
-    let args = recv.to().recv().unwrap();
+    let args = args_recv.to().recv().unwrap();
     let rv = if panic_handling {
         reset_panic_info();
         match panic::catch_unwind(panic::AssertUnwindSafe(|| function(args))) {
