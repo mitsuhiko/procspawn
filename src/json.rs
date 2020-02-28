@@ -16,7 +16,7 @@ use serde::ser::{self, Serialize, Serializer};
 /// Examples:
 ///
 /// ```rust,no_run
-/// use procspawn::{spawn, Json};
+/// use procspawn::{spawn, serde::Json};
 /// use serde::{Deserialize, Serialize};
 ///
 /// #[derive(Serialize, Deserialize, Debug)]

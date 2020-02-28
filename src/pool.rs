@@ -13,7 +13,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::core::MarshalledCall;
 use crate::error::SpawnError;
 use crate::proc::{Builder, JoinHandle, JoinHandleInner, ProcCommon, ProcessHandleState};
-use crate::serdesupport::mark_procspawn_serde;
+use crate::serde::mark_procspawn_serde;
 
 type WaitFunc = Box<dyn FnOnce() -> bool + Send>;
 type NotifyErrorFunc = Box<dyn FnMut(SpawnError) + Send>;

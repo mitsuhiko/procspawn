@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::PanicInfo;
 use crate::panic::{init_panic_hook, reset_panic_info, take_panic, BacktraceCapture};
-use crate::serdesupport::mark_procspawn_serde;
+use crate::serde::mark_procspawn_serde;
 
 pub const ENV_NAME: &str = "__PROCSPAWN_CONTENT_PROCESS_ID";
 static INITIALIZED: AtomicBool = AtomicBool::new(false);

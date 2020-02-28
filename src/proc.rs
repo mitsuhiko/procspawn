@@ -16,7 +16,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::core::{assert_spawn_okay, should_pass_args, MarshalledCall, ENV_NAME};
 use crate::error::{PanicInfo, SpawnError};
 use crate::pool::PooledHandle;
-use crate::serdesupport::mark_procspawn_serde;
+use crate::serde::mark_procspawn_serde;
 
 #[cfg(feature = "async")]
 use crate::asyncsupport::AsyncJoinHandle;

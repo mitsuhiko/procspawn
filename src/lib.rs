@@ -87,7 +87,7 @@
 //! which make some serde features incompatible with it.  Most notably if you
 //! use `#[serde(flatten)]` data cannot be sent across the processes.  To
 //! work around this you can enable the `json` feature and wrap affected objects
-//! in the [`Json`](struct.Json.html) wrapper to force JSON serialization.
+//! in the [`Json`](serde/struct.Json.html) wrapper to force JSON serialization.
 //!
 //! # Testing
 //!
@@ -206,7 +206,7 @@ mod asyncsupport;
 #[doc(hidden)]
 pub mod testsupport;
 
-mod serdesupport;
+pub mod serde;
 
 mod macros;
 
@@ -215,10 +215,5 @@ pub use self::error::{Location, PanicInfo, SpawnError};
 pub use self::pool::{Pool, PoolBuilder};
 pub use self::proc::{spawn, Builder, JoinHandle};
 
-#[cfg(feature = "json")]
-pub use self::json::Json;
-
 #[cfg(feature = "async")]
 pub use self::asyncsupport::{spawn_async, AsyncJoinHandle};
-
-pub use self::serdesupport::serde_in_ipc_mode;

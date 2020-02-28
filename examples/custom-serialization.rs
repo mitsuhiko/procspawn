@@ -24,7 +24,7 @@ impl MyBytes {
         let path = p.as_ref().to_path_buf();
         Ok(MyBytes {
             bytes: fs::read(&path)?,
-            path: path,
+            path,
         })
     }
 }
@@ -34,7 +34,7 @@ impl Serialize for MyBytes {
     where
         S: Serializer,
     {
-        if procspawn::serde_in_ipc_mode() {
+        if procspawn::serde::in_ipc_mode() {
             println!("serialize in ipc mode");
             self.path.serialize(serializer)
         } else {
@@ -53,10 +53,10 @@ impl<'de> Deserialize<'de> for MyBytes {
     where
         D: Deserializer<'de>,
     {
-        if procspawn::serde_in_ipc_mode() {
+        if procspawn::serde::in_ipc_mode() {
             println!("deserialize in ipc mode");
             let path = PathBuf::deserialize(deserializer)?;
-            MyBytes::open(path).map_err(|e| D::Error::custom(e))
+            MyBytes::open(path).map_err(D::Error::custom)
         } else {
             println!("deserialize in normal mode");
             let helper = MyBytesHelper::deserialize(deserializer)?;
