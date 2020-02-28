@@ -9,7 +9,7 @@ fn main() {
     let mut handles = vec![];
 
     for counter in 0..8 {
-        handles.push(pool.spawn(counter, |counter| {
+        handles.push(procspawn::spawn!(in pool, (counter) || {
             thread::sleep(Duration::from_millis(500));
             counter
         }));

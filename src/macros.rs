@@ -23,9 +23,23 @@
 ///     a + b
 /// });
 /// ```
+///
+/// To spawn in a pool you need to pass the pool to it (prefixed with `in`):
+///
+/// ```rust,no_run
+/// # let pool = procspawn::Pool::new(4).unwrap();
+/// let a = 42u32;
+/// let b = 23u32;
+/// let handle = procspawn::spawn!(in pool, (a, mut b) || {
+///     b += 1;
+///     a + b
+/// });
+/// ```
+///
 #[macro_export]
 macro_rules! spawn {
-    ($($args:tt)*) => { $crate::_spawn_impl!($crate::spawn, $($args)*) }
+    (in $pool:expr, $($args:tt)*) => { $crate::_spawn_impl!(pool $pool, $($args)*) };
+    ($($args:tt)*) => { $crate::_spawn_impl!(func $crate::spawn, $($args)*) }
 }
 
 /// Utility macro to spawn async functions.
@@ -35,20 +49,34 @@ macro_rules! spawn {
 #[macro_export]
 #[cfg(feature = "async")]
 macro_rules! spawn_async {
-    ($($args:tt)*) => { $crate::_spawn_impl!($crate::spawn_async, $($args)*) }
+    ($($args:tt)*) => { $crate::_spawn_impl!(func $crate::spawn_async, $($args)*) }
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! _spawn_impl {
-    ($func:path, () || $($body:tt)*) => {
+    (pool $pool:expr, () || $($body:tt)*) => {
+        $pool.spawn(
+            (),
+            |()|
+            $($body)*
+        )
+    };
+    (pool $pool:expr, ($($param:tt)*) || $($body:tt)*) => {
+        $pool.spawn(
+            $crate::_spawn_call_arg!($($param)*),
+            |($crate::_spawn_decl_arg!($($param)*))|
+            $($body)*
+        )
+    };
+    (func $func:path, () || $($body:tt)*) => {
         $func(
             (),
             |()|
             $($body)*
         )
     };
-    ($func:path, ($($param:tt)*) || $($body:tt)*) => {
+    (func $func:path, ($($param:tt)*) || $($body:tt)*) => {
         $func(
             $crate::_spawn_call_arg!($($param)*),
             |($crate::_spawn_decl_arg!($($param)*))|
