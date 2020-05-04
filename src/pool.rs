@@ -13,7 +13,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::core::MarshalledCall;
 use crate::error::SpawnError;
 use crate::proc::{Builder, JoinHandle, JoinHandleInner, ProcCommon, ProcessHandleState};
-use crate::serde::mark_procspawn_serde;
+use crate::serde::with_ipc_mode;
 
 type WaitFunc = Box<dyn FnOnce() -> bool + Send>;
 type NotifyErrorFunc = Box<dyn FnMut(SpawnError) + Send>;
@@ -84,12 +84,14 @@ impl<T: Serialize + DeserializeOwned> PooledHandle<T> {
 ///
 /// This requires the `pool` feature.
 pub struct Pool {
-    sender: mpsc::Sender<(
-        MarshalledCall,
-        Arc<PooledHandleState>,
-        WaitFunc,
-        NotifyErrorFunc,
-    )>,
+    sender: Mutex<
+        mpsc::Sender<(
+            MarshalledCall,
+            Arc<PooledHandleState>,
+            WaitFunc,
+            NotifyErrorFunc,
+        )>,
+    >,
     shared: Arc<PoolShared>,
 }
 
@@ -156,11 +158,13 @@ impl Pool {
         });
 
         self.sender
+            .lock()
+            .expect("pool sender poisoned")
             .send((
                 call,
                 shared.clone(),
                 Box::new(move || {
-                    mark_procspawn_serde(|| {
+                    with_ipc_mode(|| {
                         if let Ok(rv) = return_rx.recv() {
                             waiter_tx.send(rv.map_err(Into::into)).is_ok()
                         } else {
@@ -307,7 +311,10 @@ impl PoolBuilder {
             }
         }
 
-        Ok(Pool { sender: tx, shared })
+        Ok(Pool {
+            sender: Mutex::new(tx),
+            shared,
+        })
     }
 }
 
@@ -456,7 +463,7 @@ fn spawn_worker(
                     {
                         let mut call_tx = current_call_tx.lock().unwrap();
                         if let Some(ref mut call_tx) = *call_tx {
-                            match mark_procspawn_serde(|| call_tx.send(call)) {
+                            match with_ipc_mode(|| call_tx.send(call)) {
                                 Ok(()) => {}
                                 Err(..) => {
                                     restart = true;

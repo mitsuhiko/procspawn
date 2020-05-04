@@ -20,8 +20,6 @@ default = ["backtrace", "safe-shared-libraries"]
 test-support = ["ctor"]
 json = ["serde_json"]
 safe-shared-libraries = ["findshlibs"]
-async = ["futures"]
-async-executor = ["async", "futures/executor"]
 
 [dependencies]
 ipc-channel = "0.14.0"
@@ -38,10 +36,6 @@ name = "panic"
 required-features = ["backtrace"]
 
 [[example]]
-name = "async"
-required-features = ["async", "async-executor"]
-
-[[example]]
 name = "bad-serialization"
 required-features = ["backtrace", "json"]
 
@@ -52,10 +46,6 @@ required-features = ["test-support"]
 [[test]]
 name = "test_pool"
 required-features = ["test-support"]
-
-[[test]]
-name = "test_async"
-required-features = ["test-support", "async-executor"]
 
 [[test]]
 name = "test_macros"

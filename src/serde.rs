@@ -23,7 +23,7 @@ impl Drop for ResetProcspawn {
 
 /// Internal helper to mark all serde calls that go across processes
 /// so that serializers can respond to it.
-pub fn mark_procspawn_serde<F: FnOnce() -> R, R>(f: F) -> R {
+pub fn with_ipc_mode<F: FnOnce() -> R, R>(f: F) -> R {
     let old = IN_PROCSPAWN.with(|in_procspawn| in_procspawn.swap(true, Ordering::Relaxed));
     let _dropper = ResetProcspawn(old);
     f()

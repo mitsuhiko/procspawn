@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0
+
+* Removed experimental async support.
+
 ## 0.8.4
 
 * Added pool support for macros.

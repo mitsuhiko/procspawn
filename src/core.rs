@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::PanicInfo;
 use crate::panic::{init_panic_hook, reset_panic_info, take_panic, BacktraceCapture};
-use crate::serde::mark_procspawn_serde;
+use crate::serde::with_ipc_mode;
 
 pub const ENV_NAME: &str = "__PROCSPAWN_CONTENT_PROCESS_ID";
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -329,7 +329,7 @@ unsafe fn run_func<A, R>(
 {
     let lib_offset = find_shared_library_offset_by_name(lib_name) as isize;
     let function: fn(A) -> R = mem::transmute(fn_offset + lib_offset as *const () as isize);
-    let args = mark_procspawn_serde(|| args_recv.to().recv().unwrap());
+    let args = with_ipc_mode(|| args_recv.to().recv().unwrap());
     let rv = if panic_handling {
         reset_panic_info();
         match panic::catch_unwind(panic::AssertUnwindSafe(|| function(args))) {
@@ -342,7 +342,7 @@ unsafe fn run_func<A, R>(
 
     // sending can fail easily because of bincode limitations.  If you see
     // this in your tracebacks consider using the `Json` wrapper.
-    if let Err(err) = mark_procspawn_serde(|| sender.to().send(rv)) {
+    if let Err(err) = with_ipc_mode(|| sender.to().send(rv)) {
         if let IpcErrorKind::Io(ref io) = *err {
             if io.kind() == io::ErrorKind::NotFound || io.kind() == io::ErrorKind::ConnectionReset {
                 // this error is okay.  this means nobody actually

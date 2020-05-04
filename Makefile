@@ -47,7 +47,6 @@ testall:
 	cargo run --all-features --example simple
 	cargo run --all-features --example stdout
 	cargo run --all-features --example timeout
-	cargo run --all-features --example async
 	cargo run --all-features --example macro
 	cargo run --all-features --example bad-serialization
 	cargo run --all-features --example custom-serialization

@@ -42,16 +42,6 @@ macro_rules! spawn {
     ($($args:tt)*) => { $crate::_spawn_impl!(func $crate::spawn, $($args)*) }
 }
 
-/// Utility macro to spawn async functions.
-///
-/// This works exactly like the [`spawn!`](macro.spawn.html) macro but instead
-/// will invoke [`spawn_async`](fn.spawn_async.html).
-#[macro_export]
-#[cfg(feature = "async")]
-macro_rules! spawn_async {
-    ($($args:tt)*) => { $crate::_spawn_impl!(func $crate::spawn_async, $($args)*) }
-}
-
 #[macro_export]
 #[doc(hidden)]
 macro_rules! _spawn_impl {

@@ -16,10 +16,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use crate::core::{assert_spawn_okay, should_pass_args, MarshalledCall, ENV_NAME};
 use crate::error::{PanicInfo, SpawnError};
 use crate::pool::PooledHandle;
-use crate::serde::mark_procspawn_serde;
-
-#[cfg(feature = "async")]
-use crate::asyncsupport::AsyncJoinHandle;
+use crate::serde::with_ipc_mode;
 
 type PreExecFunc = dyn FnMut() -> io::Result<()> + Send + Sync + 'static;
 
@@ -181,8 +178,6 @@ impl Builder {
 
     /// Captures the `stdin` of the spawned process, allowing you to manually
     /// send data via `JoinHandle::stdin`
-    ///
-    /// For async spawns sending data is currently not supported.
     pub fn stdin<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
         self.stdin = Some(cfg.into());
         self
@@ -190,8 +185,6 @@ impl Builder {
 
     /// Captures the `stdout` of the spawned process, allowing you to manually
     /// receive data via `JoinHandle::stdout`
-    ///
-    /// For async spawns retrieving the data is currently not supported.
     pub fn stdout<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
         self.stdout = Some(cfg.into());
         self
@@ -199,8 +192,6 @@ impl Builder {
 
     /// Captures the `stderr` of the spawned process, allowing you to manually
     /// receive data via `JoinHandle::stderr`
-    ///
-    /// For async spawns retrieving the data is currently not supported.
     pub fn stderr<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
         self.stderr = Some(cfg.into());
         self
@@ -214,25 +205,9 @@ impl Builder {
     ) -> JoinHandle<R> {
         assert_spawn_okay();
         JoinHandle {
-            inner: mem::replace(self, Default::default())
+            inner: mem::take(self)
                 .spawn_helper(args, func)
                 .map(JoinHandleInner::Process),
-        }
-    }
-
-    /// Spawns the process (async).
-    ///
-    /// This is the async equivalent of [`spawn`](#method.spawn).
-    #[cfg(feature = "async")]
-    pub fn spawn_async<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
-        &mut self,
-        args: A,
-        func: fn(A) -> R,
-    ) -> AsyncJoinHandle<R> {
-        assert_spawn_okay();
-        match mem::replace(self, Default::default()).spawn_helper(args, func) {
-            Ok(handle) => AsyncJoinHandle::from_process_handle(handle),
-            Err(err) => AsyncJoinHandle::<R>::from_error(err),
         }
     }
 
@@ -315,7 +290,7 @@ impl Builder {
         let (return_tx, return_rx) = ipc::channel()?;
 
         tx.send(MarshalledCall::marshal::<A, R>(func, args_rx, return_tx))?;
-        mark_procspawn_serde(|| -> Result<_, SpawnError> {
+        with_ipc_mode(|| -> Result<_, SpawnError> {
             args_tx.send(args)?;
             Ok(())
         })?;
@@ -409,7 +384,7 @@ impl<T> ProcessHandle<T> {
 
 impl<T: Serialize + DeserializeOwned> ProcessHandle<T> {
     pub fn join(&mut self) -> Result<T, SpawnError> {
-        let rv = mark_procspawn_serde(|| self.recv.recv())?.map_err(Into::into);
+        let rv = with_ipc_mode(|| self.recv.recv())?.map_err(Into::into);
         self.wait();
         rv
     }
@@ -423,7 +398,7 @@ impl<T: Serialize + DeserializeOwned> ProcessHandle<T> {
         };
         let mut to_sleep = Duration::from_millis(1);
         let rv = loop {
-            match mark_procspawn_serde(|| self.recv.try_recv()) {
+            match with_ipc_mode(|| self.recv.try_recv()) {
                 Ok(rv) => break rv.map_err(Into::into),
                 Err(err) if is_ipc_timeout(&err) => {
                     if let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
