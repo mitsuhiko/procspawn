@@ -204,7 +204,7 @@ impl Builder {
     ) -> JoinHandle<R> {
         assert_spawn_okay();
         JoinHandle {
-            inner: mem::replace(self, Default::default())
+            inner: mem::take(self)
                 .spawn_helper(args, func)
                 .map(JoinHandleInner::Process),
         }
