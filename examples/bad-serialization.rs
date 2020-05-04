@@ -1,4 +1,4 @@
-use procspawn::{self, spawn, Json};
+use procspawn::{self, serde::Json, spawn};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]

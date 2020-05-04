@@ -88,7 +88,7 @@ for inter process communication.  Bincode currently has some limitations
 which make some serde features incompatible with it.  Most notably if you
 use `#[serde(flatten)]` data cannot be sent across the processes.  To
 work around this you can enable the `json` feature and wrap affected objects
-in the [`Json`](https://docs.rs/procspawn/latest/procspawn/struct.Json.html) wrapper to force JSON serialization.
+in the [`Json`](serde/struct.Json.html) wrapper to force JSON serialization.
 
 ## Testing
 
