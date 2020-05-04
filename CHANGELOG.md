@@ -3,6 +3,8 @@
 ## 0.9.0
 
 * Removed experimental async support.
+* Added improved serde interop.
+  ([#32](https://github.com/mitsuhiko/procspawn/pull/32))
 
 ## 0.8.4
 
