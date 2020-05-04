@@ -53,7 +53,7 @@
 //! For more uses it's a better idea to spawn a [`Pool`](struct.Pool.html)
 //! which will keep processes around for reuse.  Between calls the processes
 //! will stay around which also means the can keep state between calls if
-//! needed.  Pools are currently not supported for async usage.
+//! needed.
 //!
 //! # Panics
 //!
@@ -78,7 +78,6 @@
 //!   with rusttest.  See [`testing`](#testing) for more information.
 //! * `json`: enables optional JSON serialization.  For more information see
 //!   [Bincode Limitations](#bincode-limitations).
-//! * `async`: enables support for the async methods.
 //!
 //! # Bincode Limitations
 //!
@@ -135,19 +134,6 @@
 //! Spawning processes will be disabled if the feature is not enabled until
 //! you call the [`assert_spawn_is_safe`](fn.assert_spawn_is_safe.html) function.
 //!
-//! # Async Support
-//!
-//! When the `async` feature is enabled a `spawn_async` function becomes
-//! available which gives you an async version of a join handle.  There are
-//! however a few limitations / differences with async support currently:
-//!
-//! * pools are not supported. Right now you can only spawn one-off processes.
-//! * replacing stdin/stdout/stderr with a pipe is not supported.  The async
-//!   join handle does not give you access to these streams.
-//! * when you drop a join handle the process is being terminated.
-//! * there is no native join with timeout support.  You can use your executors
-//!   timeout functionality to achieve the same.
-//!
 //! # Macros
 //!
 //! Alternatively the [`spawn!`](macro.spawn.html) macro can be used which can
@@ -182,10 +168,8 @@
 //!   shows how you can wait on a process with timeouts.
 //! * [bad-serialization.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/bad-serialization.rs):
 //!   shows JSON based workarounds for bincode limitations.
-//! * [async.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/async.rs):
-//!   demonstrates async usage.
 //! * [macro.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/macro.rs):
-//!   demonstrates async usage.
+//!   demonstrates macro usage.
 //!
 //! More examples can be found in the example folder: [examples](https://github.com/mitsuhiko/procspawn/tree/master/examples)
 
@@ -200,9 +184,6 @@ mod pool;
 #[cfg(feature = "json")]
 mod json;
 
-#[cfg(feature = "async")]
-mod asyncsupport;
-
 #[doc(hidden)]
 pub mod testsupport;
 
@@ -215,6 +196,3 @@ pub use self::proc::{spawn, Builder, JoinHandle};
 
 #[cfg(feature = "json")]
 pub use self::json::Json;
-
-#[cfg(feature = "async")]
-pub use self::asyncsupport::{spawn_async, AsyncJoinHandle};

@@ -17,9 +17,6 @@ use crate::core::{assert_spawn_okay, should_pass_args, MarshalledCall, ENV_NAME}
 use crate::error::{PanicInfo, SpawnError};
 use crate::pool::PooledHandle;
 
-#[cfg(feature = "async")]
-use crate::asyncsupport::AsyncJoinHandle;
-
 type PreExecFunc = dyn FnMut() -> io::Result<()> + Send + Sync + 'static;
 
 #[derive(Clone)]
@@ -180,8 +177,6 @@ impl Builder {
 
     /// Captures the `stdin` of the spawned process, allowing you to manually
     /// send data via `JoinHandle::stdin`
-    ///
-    /// For async spawns sending data is currently not supported.
     pub fn stdin<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
         self.stdin = Some(cfg.into());
         self
@@ -189,8 +184,6 @@ impl Builder {
 
     /// Captures the `stdout` of the spawned process, allowing you to manually
     /// receive data via `JoinHandle::stdout`
-    ///
-    /// For async spawns retrieving the data is currently not supported.
     pub fn stdout<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
         self.stdout = Some(cfg.into());
         self
@@ -198,8 +191,6 @@ impl Builder {
 
     /// Captures the `stderr` of the spawned process, allowing you to manually
     /// receive data via `JoinHandle::stderr`
-    ///
-    /// For async spawns retrieving the data is currently not supported.
     pub fn stderr<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
         self.stderr = Some(cfg.into());
         self
@@ -216,22 +207,6 @@ impl Builder {
             inner: mem::replace(self, Default::default())
                 .spawn_helper(args, func)
                 .map(JoinHandleInner::Process),
-        }
-    }
-
-    /// Spawns the process (async).
-    ///
-    /// This is the async equivalent of [`spawn`](#method.spawn).
-    #[cfg(feature = "async")]
-    pub fn spawn_async<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
-        &mut self,
-        args: A,
-        func: fn(A) -> R,
-    ) -> AsyncJoinHandle<R> {
-        assert_spawn_okay();
-        match mem::replace(self, Default::default()).spawn_helper(args, func) {
-            Ok(handle) => AsyncJoinHandle::from_process_handle(handle),
-            Err(err) => AsyncJoinHandle::<R>::from_error(err),
         }
     }
 
