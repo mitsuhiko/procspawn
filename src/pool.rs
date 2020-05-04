@@ -71,6 +71,13 @@ impl<T: Serialize + DeserializeOwned> PooledHandle<T> {
     }
 }
 
+type PoolSender = mpsc::Sender<(
+    MarshalledCall,
+    Arc<PooledHandleState>,
+    WaitFunc,
+    NotifyErrorFunc,
+)>;
+
 /// A process pool.
 ///
 /// This works similar to `spawn` but lets you retain a pool of processes. Since
@@ -84,14 +91,7 @@ impl<T: Serialize + DeserializeOwned> PooledHandle<T> {
 ///
 /// This requires the `pool` feature.
 pub struct Pool {
-    sender: Mutex<
-        mpsc::Sender<(
-            MarshalledCall,
-            Arc<PooledHandleState>,
-            WaitFunc,
-            NotifyErrorFunc,
-        )>,
-    >,
+    sender: Mutex<PoolSender>,
     shared: Arc<PoolShared>,
 }
 
