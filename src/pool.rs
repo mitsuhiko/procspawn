@@ -83,12 +83,14 @@ impl<T: Serialize + DeserializeOwned> PooledHandle<T> {
 ///
 /// This requires the `pool` feature.
 pub struct Pool {
-    sender: mpsc::Sender<(
-        MarshalledCall,
-        Arc<PooledHandleState>,
-        WaitFunc,
-        NotifyErrorFunc,
-    )>,
+    sender: Mutex<
+        mpsc::Sender<(
+            MarshalledCall,
+            Arc<PooledHandleState>,
+            WaitFunc,
+            NotifyErrorFunc,
+        )>,
+    >,
     shared: Arc<PoolShared>,
 }
 
@@ -155,6 +157,8 @@ impl Pool {
         });
 
         self.sender
+            .lock()
+            .expect("pool sender poisoned")
             .send((
                 call,
                 shared.clone(),
@@ -304,7 +308,10 @@ impl PoolBuilder {
             }
         }
 
-        Ok(Pool { sender: tx, shared })
+        Ok(Pool {
+            sender: Mutex::new(tx),
+            shared,
+        })
     }
 }
 
