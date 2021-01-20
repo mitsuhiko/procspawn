@@ -429,66 +429,70 @@ fn spawn_worker(
     // for each worker we spawn a monitoring thread
     {
         let join_handle = join_handle.clone();
-        thread::spawn(move || {
-            loop {
-                if shared.dead.load(Ordering::SeqCst) {
-                    break;
-                }
-
-                let (call, state, wait_func, mut err_func) = {
-                    // Only lock jobs for the time it takes
-                    // to get a job, not run it.
-                    let lock = shared
-                        .call_receiver
-                        .lock()
-                        .expect("Monitor thread unable to lock call receiver");
-                    match lock.recv() {
-                        Ok(rv) => rv,
-                        Err(_) => break,
-                    }
-                };
-
-                shared.active_count.fetch_add(1, Ordering::SeqCst);
-                shared.queued_count.fetch_sub(1, Ordering::SeqCst);
-
-                // this task was already cancelled, no need to execute it
-                if state.cancelled.load(Ordering::SeqCst) {
-                    err_func(SpawnError::new_cancelled());
-                } else {
-                    if let Some(ref mut handle) = *join_handle.lock().unwrap() {
-                        *state.process_handle_state.lock().unwrap() = handle.process_handle_state();
+        thread::Builder::new()
+            .name("procspawn-monitor".into())
+            .spawn(move || {
+                loop {
+                    if shared.dead.load(Ordering::SeqCst) {
+                        break;
                     }
 
-                    let mut restart = false;
-                    {
-                        let mut call_tx = current_call_tx.lock().unwrap();
-                        if let Some(ref mut call_tx) = *call_tx {
-                            match with_ipc_mode(|| call_tx.send(call)) {
-                                Ok(()) => {}
-                                Err(..) => {
-                                    restart = true;
+                    let (call, state, wait_func, mut err_func) = {
+                        // Only lock jobs for the time it takes
+                        // to get a job, not run it.
+                        let lock = shared
+                            .call_receiver
+                            .lock()
+                            .expect("Monitor thread unable to lock call receiver");
+                        match lock.recv() {
+                            Ok(rv) => rv,
+                            Err(_) => break,
+                        }
+                    };
+
+                    shared.active_count.fetch_add(1, Ordering::SeqCst);
+                    shared.queued_count.fetch_sub(1, Ordering::SeqCst);
+
+                    // this task was already cancelled, no need to execute it
+                    if state.cancelled.load(Ordering::SeqCst) {
+                        err_func(SpawnError::new_cancelled());
+                    } else {
+                        if let Some(ref mut handle) = *join_handle.lock().unwrap() {
+                            *state.process_handle_state.lock().unwrap() =
+                                handle.process_handle_state();
+                        }
+
+                        let mut restart = false;
+                        {
+                            let mut call_tx = current_call_tx.lock().unwrap();
+                            if let Some(ref mut call_tx) = *call_tx {
+                                match with_ipc_mode(|| call_tx.send(call)) {
+                                    Ok(()) => {}
+                                    Err(..) => {
+                                        restart = true;
+                                    }
                                 }
+                            } else {
+                                restart = true;
                             }
-                        } else {
+                        }
+
+                        if !restart && !wait_func() {
                             restart = true;
+                        }
+
+                        *state.process_handle_state.lock().unwrap() = None;
+
+                        if restart {
+                            check_for_restart(&mut err_func);
                         }
                     }
 
-                    if !restart && !wait_func() {
-                        restart = true;
-                    }
-
-                    *state.process_handle_state.lock().unwrap() = None;
-
-                    if restart {
-                        check_for_restart(&mut err_func);
-                    }
+                    shared.active_count.fetch_sub(1, Ordering::SeqCst);
+                    shared.no_work_notify_all();
                 }
-
-                shared.active_count.fetch_sub(1, Ordering::SeqCst);
-                shared.no_work_notify_all();
-            }
-        });
+            })
+            .unwrap();
     }
 
     (*spawn.lock().unwrap())();
