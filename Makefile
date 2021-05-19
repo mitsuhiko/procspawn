@@ -15,17 +15,17 @@ doc:
 
 style:
 	@rustup component add rustfmt --toolchain stable 2> /dev/null
-	cargo +stable fmt -- --check
+	cargo fmt -- --check
 .PHONY: style
 
 format:
 	@rustup component add rustfmt --toolchain stable 2> /dev/null
-	cargo +stable fmt
+	cargo fmt
 .PHONY: format
 
 lint:
 	@rustup component add clippy --toolchain stable 2> /dev/null
-	cargo +stable clippy --all-features --tests --all --examples -- -D clippy::all
+	cargo clippy --all-features --tests --all --examples -- -D clippy::all
 .PHONY: lint
 
 test: testall
