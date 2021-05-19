@@ -75,7 +75,8 @@ macro_rules! define_common_methods {
             K: AsRef<OsStr>,
             V: AsRef<OsStr>,
         {
-            self.common.vars
+            self.common
+                .vars
                 .insert(key.as_ref().to_owned(), val.as_ref().to_owned());
             self
         }
@@ -149,12 +150,12 @@ macro_rules! define_common_methods {
         #[cfg(unix)]
         pub unsafe fn pre_exec<F>(&mut self, f: F) -> &mut Self
         where
-            F: FnMut() -> io::Result<()> + Send + Sync + 'static
+            F: FnMut() -> io::Result<()> + Send + Sync + 'static,
         {
             self.common.pre_exec = Some(Arc::new(Mutex::new(Box::new(f))));
             self
         }
-    }
+    };
 }
 
 impl Builder {
@@ -343,10 +344,7 @@ pub struct ProcessHandle<T> {
 }
 
 fn is_ipc_timeout(err: &ipc_channel::ipc::TryRecvError) -> bool {
-    match err {
-        ipc_channel::ipc::TryRecvError::Empty => true,
-        _ => false,
-    }
+    matches!(err, ipc_channel::ipc::TryRecvError::Empty)
 }
 
 impl<T> ProcessHandle<T> {

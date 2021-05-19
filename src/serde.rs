@@ -65,7 +65,7 @@ impl fmt::Debug for Shmem {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 write!(f, "b\"")?;
                 for &byte in self.0.as_bytes() {
-                    if byte >= 32 && byte < 127 {
+                    if (32..127).contains(&byte) {
                         write!(f, "{}", byte)?;
                     } else {
                         write!(f, "\\x{:02x}", byte)?;

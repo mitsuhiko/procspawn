@@ -145,28 +145,17 @@ impl SpawnError {
 
     /// True if this error indicates a cancellation.
     pub fn is_cancellation(&self) -> bool {
-        if let SpawnErrorKind::Cancelled = self.kind {
-            true
-        } else {
-            false
-        }
+        matches!(self.kind, SpawnErrorKind::Cancelled)
     }
 
     /// True if this error indicates a timeout.
     pub fn is_timeout(&self) -> bool {
-        if let SpawnErrorKind::TimedOut = self.kind {
-            true
-        } else {
-            false
-        }
+        matches!(self.kind, SpawnErrorKind::TimedOut)
     }
 
     /// True if this means the remote side closed.
     pub fn is_remote_close(&self) -> bool {
-        match self.kind {
-            SpawnErrorKind::IpcChannelClosed(..) => true,
-            _ => false,
-        }
+        matches!(self.kind, SpawnErrorKind::IpcChannelClosed(..))
     }
 
     pub(crate) fn new_remote_close() -> SpawnError {

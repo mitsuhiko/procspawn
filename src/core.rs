@@ -115,7 +115,7 @@ fn find_library_name_and_offset(f: *const u8) -> (OsString, isize) {
                 .next()
                 .map_or(0, |x| x.actual_virtual_memory_address(shlib).0 as isize);
             for seg in shlib.segments() {
-                if seg.contains_avma(shlib, Avma(f)) {
+                if seg.contains_avma(shlib, Avma(f as usize)) {
                     result = Some((shlib.name().to_owned(), start));
                     return IterationControl::Break;
                 }
