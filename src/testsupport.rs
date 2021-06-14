@@ -26,7 +26,6 @@ pub use ctor::ctor;
 macro_rules! enable_test_support {
     () => {
         #[$crate::testsupport::ctor]
-        #[used]
         fn __procspawn_test_support_init() {
             // strip the crate name from the module path
             let module_path = std::module_path!().splitn(2, "::").nth(1);
