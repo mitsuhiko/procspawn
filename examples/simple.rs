@@ -1,12 +1,14 @@
 use procspawn::{self, spawn};
 
-fn main() {
-    procspawn::init();
+#[tokio::main]
+async fn main() {
+    procspawn::init().await;
 
-    let handle = spawn((1, 2), |(a, b)| {
+    let handle = spawn((1, vec![1, 2, 3]), |(a, b)| {
         println!("in process: {:?} {:?}", a, b);
-        a + b
-    });
+        a + b.into_iter().sum::<i32>()
+    })
+    .await;
 
-    println!("result: {}", handle.join().unwrap());
+    println!("result: {}", handle.join().await.unwrap());
 }

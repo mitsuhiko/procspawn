@@ -1,21 +1,22 @@
 use std::env;
 use std::ffi::{OsStr, OsString};
+use std::future::Future;
 use std::io;
 use std::mem;
 use std::panic;
+use std::pin::Pin;
 use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(feature = "safe-shared-libraries")]
 use findshlibs::{Avma, IterationControl, Segment, SharedLibrary};
 
-use ipc_channel::ipc::{self, IpcReceiver, IpcSender, OpaqueIpcReceiver, OpaqueIpcSender};
-use ipc_channel::ErrorKind as IpcErrorKind;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use tokio_unix_ipc::panic::{catch_panic, init_panic_hook};
+use tokio_unix_ipc::{RawReceiver, RawSender, Receiver, Sender};
 
 use crate::error::PanicInfo;
-use crate::panic::{init_panic_hook, reset_panic_info, take_panic, BacktraceCapture};
-use crate::serde::with_ipc_mode;
 
 pub const ENV_NAME: &str = "__PROCSPAWN_CONTENT_PROCESS_ID";
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -51,8 +52,6 @@ pub struct ProcConfig {
     pass_args: bool,
     #[cfg(feature = "backtrace")]
     capture_backtraces: bool,
-    #[cfg(feature = "backtrace")]
-    resolve_backtraces: bool,
 }
 
 impl Default for ProcConfig {
@@ -63,8 +62,6 @@ impl Default for ProcConfig {
             pass_args: true,
             #[cfg(feature = "backtrace")]
             capture_backtraces: true,
-            #[cfg(feature = "backtrace")]
-            resolve_backtraces: true,
         }
     }
 }
@@ -172,15 +169,8 @@ impl ProcConfig {
         self
     }
 
-    /// Controls whether backtraces should be resolved.
-    #[cfg(feature = "backtrace")]
-    pub fn resolve_backtraces(&mut self, enabled: bool) -> &mut Self {
-        self.resolve_backtraces = enabled;
-        self
-    }
-
     /// Consumes the config and initializes the process.
-    pub fn init(&mut self) {
+    pub async fn init(&mut self) {
         mark_initialized();
         PASS_ARGS.store(self.pass_args, Ordering::SeqCst);
 
@@ -190,22 +180,18 @@ impl ProcConfig {
             if let Some(callback) = self.callback.take() {
                 callback();
             }
-            bootstrap_ipc(token, &self);
+            bootstrap_ipc(token, &self).await;
         }
     }
 
-    fn backtrace_capture(&self) -> BacktraceCapture {
+    fn backtrace_capture(&self) -> bool {
         #[cfg(feature = "backtrace")]
         {
-            match (self.capture_backtraces, self.resolve_backtraces) {
-                (false, _) => BacktraceCapture::No,
-                (true, true) => BacktraceCapture::Resolved,
-                (true, false) => BacktraceCapture::Unresolved,
-            }
+            self.capture_backtraces
         }
         #[cfg(not(feature = "backtrace"))]
         {
-            BacktraceCapture::No
+            false
         }
     }
 }
@@ -217,8 +203,8 @@ impl ProcConfig {
 /// function.
 ///
 /// For more complex initializations see [`ProcConfig`](struct.ProcConfig.html).
-pub fn init() {
-    ProcConfig::default().init()
+pub async fn init() {
+    ProcConfig::default().init().await
 }
 
 #[inline]
@@ -231,7 +217,7 @@ pub fn assert_spawn_okay() {
         if !ALLOW_UNSAFE_SPAWN.load(Ordering::SeqCst) {
             panic!(
                 "spawn() prevented because safe-shared-library feature was \
-                 disabled and assert_no_shared_libraries was not invoked."
+                 disabled and assert_spawn_is_safe was not invoked."
             );
         }
     }
@@ -242,26 +228,23 @@ fn is_benign_bootstrap_error(err: &io::Error) -> bool {
     err.kind() == io::ErrorKind::Other && err.to_string() == "Unknown Mach error: 44e"
 }
 
-fn bootstrap_ipc(token: String, config: &ProcConfig) {
+async fn bootstrap_ipc(token: String, config: &ProcConfig) {
     if config.panic_handling {
         init_panic_hook(config.backtrace_capture());
     }
 
     {
-        let connection_bootstrap: IpcSender<IpcSender<MarshalledCall>> =
-            match IpcSender::connect(token) {
-                Ok(sender) => sender,
-                Err(err) => {
-                    if !is_benign_bootstrap_error(&err) {
-                        Err::<(), _>(err).expect("could not bootstrap ipc connection");
-                    }
-                    process::exit(1);
+        let connection_bootstrap: Receiver<MarshalledCall> = match Receiver::connect(token).await {
+            Ok(receiver) => receiver,
+            Err(err) => {
+                if !is_benign_bootstrap_error(&err) {
+                    Err::<(), _>(err).expect("could not bootstrap ipc connection");
                 }
-            };
-        let (tx, rx) = ipc::channel().unwrap();
-        connection_bootstrap.send(tx).unwrap();
-        let marshalled_call = rx.recv().unwrap();
-        marshalled_call.call(config.panic_handling);
+                process::exit(1);
+            }
+        };
+        let marshalled_call = connection_bootstrap.recv().await.unwrap();
+        marshalled_call.call(config.panic_handling).await;
     }
     process::exit(0);
 }
@@ -272,20 +255,20 @@ pub struct MarshalledCall {
     pub lib_name: OsString,
     pub fn_offset: isize,
     pub wrapper_offset: isize,
-    pub args_receiver: OpaqueIpcReceiver,
-    pub return_sender: OpaqueIpcSender,
+    pub args_receiver: RawReceiver,
+    pub return_sender: RawSender,
 }
 
 impl MarshalledCall {
     /// Marshalls the call.
     pub fn marshal<A, R>(
         f: fn(A) -> R,
-        args_receiver: IpcReceiver<A>,
-        return_sender: IpcSender<Result<R, PanicInfo>>,
+        args_receiver: Receiver<A>,
+        return_sender: Sender<Result<R, PanicInfo>>,
     ) -> MarshalledCall
     where
-        A: Serialize + for<'de> Deserialize<'de>,
-        R: Serialize + for<'de> Deserialize<'de>,
+        A: Serialize + DeserializeOwned,
+        R: Serialize + DeserializeOwned,
     {
         let (lib_name, offset) = find_library_name_and_offset(f as *const () as *const u8);
         let init_loc = init as *const () as isize;
@@ -295,24 +278,31 @@ impl MarshalledCall {
             lib_name,
             fn_offset,
             wrapper_offset,
-            args_receiver: args_receiver.to_opaque(),
-            return_sender: return_sender.to_opaque(),
+            args_receiver: args_receiver.into_raw_receiver(),
+            return_sender: return_sender.into_raw_sender(),
         }
     }
 
     /// Unmarshals and performs the call.
-    pub fn call(self, panic_handling: bool) {
+    pub async fn call(self, panic_handling: bool) {
         unsafe {
-            let ptr = self.wrapper_offset + init as *const () as isize;
-            let func: fn(&OsStr, isize, OpaqueIpcReceiver, OpaqueIpcSender, bool) =
-                mem::transmute(ptr);
+            let init_loc = init as *const () as isize;
+            let ptr = self.wrapper_offset + init_loc;
+            let func: fn(
+                &OsStr,
+                isize,
+                RawReceiver,
+                RawSender,
+                bool,
+            ) -> Pin<Box<dyn Future<Output = ()>>> = mem::transmute(ptr);
             func(
                 &self.lib_name,
                 self.fn_offset,
                 self.args_receiver,
                 self.return_sender,
                 panic_handling,
-            );
+            )
+            .await;
         }
     }
 }
@@ -320,37 +310,32 @@ impl MarshalledCall {
 unsafe fn run_func<A, R>(
     lib_name: &OsStr,
     fn_offset: isize,
-    args_recv: OpaqueIpcReceiver,
-    sender: OpaqueIpcSender,
+    args_recv: RawReceiver,
+    sender: RawSender,
     panic_handling: bool,
-) where
-    A: Serialize + for<'de> Deserialize<'de>,
-    R: Serialize + for<'de> Deserialize<'de>,
+) -> Pin<Box<dyn Future<Output = ()>>>
+where
+    A: Serialize + DeserializeOwned,
+    R: Serialize + DeserializeOwned,
 {
-    let lib_offset = find_shared_library_offset_by_name(lib_name) as isize;
-    let function: fn(A) -> R = mem::transmute(fn_offset + lib_offset as *const () as isize);
-    let args = with_ipc_mode(|| args_recv.to().recv().unwrap());
-    let rv = if panic_handling {
-        reset_panic_info();
-        match panic::catch_unwind(panic::AssertUnwindSafe(|| function(args))) {
-            Ok(rv) => Ok(rv),
-            Err(panic) => Err(take_panic(&*panic)),
-        }
-    } else {
-        Ok(function(args))
-    };
-
-    // sending can fail easily because of bincode limitations.  If you see
-    // this in your tracebacks consider using the `Json` wrapper.
-    if let Err(err) = with_ipc_mode(|| sender.to().send(rv)) {
-        if let IpcErrorKind::Io(ref io) = *err {
-            if io.kind() == io::ErrorKind::NotFound || io.kind() == io::ErrorKind::ConnectionReset {
-                // this error is okay.  this means nobody actually
-                // waited for the call, so we just ignore it.
-                return;
+    let lib_name = lib_name.to_owned();
+    Box::pin(async move {
+        let lib_offset = find_shared_library_offset_by_name(&lib_name) as isize;
+        let function: fn(A) -> R = mem::transmute(fn_offset + lib_offset as *const () as isize);
+        let args = Receiver::<A>::from(args_recv).recv().await.unwrap();
+        let rv = if panic_handling {
+            match catch_panic(|| function(args)) {
+                Ok(rv) => Ok(rv),
+                Err(panic) => Err(panic),
             }
         } else {
+            Ok(function(args))
+        };
+
+        // sending can fail easily because of bincode limitations.  If you see
+        // this in your tracebacks consider using the `Structural` wrapper.
+        if let Err(err) = Sender::<Result<R, PanicInfo>>::from(sender).send(rv).await {
             Err::<(), _>(err).expect("could not send event over ipc channel");
         }
-    }
+    })
 }

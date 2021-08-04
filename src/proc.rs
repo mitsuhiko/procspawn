@@ -1,22 +1,19 @@
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
+use std::io;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::process::{ChildStderr, ChildStdin, ChildStdout};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
-use std::{env, mem, process};
-use std::{io, thread};
+use std::{env, mem};
 
-use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
 use serde::{de::DeserializeOwned, Serialize};
+use tokio::process::{self, ChildStderr, ChildStdin, ChildStdout};
+use tokio_unix_ipc::{channel, Bootstrapper, Receiver};
 
 use crate::core::{assert_spawn_okay, should_pass_args, MarshalledCall, ENV_NAME};
 use crate::error::{PanicInfo, SpawnError};
-use crate::pool::PooledHandle;
-use crate::serde::with_ipc_mode;
 
 type PreExecFunc = dyn FnMut() -> io::Result<()> + Send + Sync + 'static;
 
@@ -170,11 +167,6 @@ impl Builder {
         }
     }
 
-    pub(crate) fn common(&mut self, common: ProcCommon) -> &mut Self {
-        self.common = common;
-        self
-    }
-
     define_common_methods!();
 
     /// Captures the `stdin` of the spawned process, allowing you to manually
@@ -199,7 +191,7 @@ impl Builder {
     }
 
     /// Spawns the process.
-    pub fn spawn<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
+    pub async fn spawn<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
         &mut self,
         args: A,
         func: fn(A) -> R,
@@ -208,16 +200,17 @@ impl Builder {
         JoinHandle {
             inner: mem::take(self)
                 .spawn_helper(args, func)
+                .await
                 .map(JoinHandleInner::Process),
         }
     }
 
-    fn spawn_helper<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
+    async fn spawn_helper<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
         self,
         args: A,
         func: fn(A) -> R,
     ) -> Result<ProcessHandle<R>, SpawnError> {
-        let (server, token) = IpcOneShotServer::<IpcSender<MarshalledCall>>::new()?;
+        let server = Bootstrapper::new()?;
         let me = if cfg!(target_os = "linux") {
             // will work even if exe is moved
             let path: PathBuf = "/proc/self/exe".into();
@@ -232,11 +225,10 @@ impl Builder {
         };
         let mut child = process::Command::new(me);
         child.envs(self.common.vars.into_iter());
-        child.env(ENV_NAME, token);
+        child.env(ENV_NAME, server.path());
 
         #[cfg(unix)]
         {
-            use std::os::unix::process::CommandExt;
             if let Some(id) = self.common.uid {
                 child.uid(id);
             }
@@ -285,20 +277,17 @@ impl Builder {
         }
         let process = child.spawn()?;
 
-        let (_rx, tx) = server.accept()?;
+        let (args_tx, args_rx) = channel()?;
+        let (return_tx, return_rx) = channel()?;
 
-        let (args_tx, args_rx) = ipc::channel()?;
-        let (return_tx, return_rx) = ipc::channel()?;
-
-        tx.send(MarshalledCall::marshal::<A, R>(func, args_rx, return_tx))?;
-        with_ipc_mode(|| -> Result<_, SpawnError> {
-            args_tx.send(args)?;
-            Ok(())
-        })?;
+        server
+            .send(MarshalledCall::marshal::<A, R>(func, args_rx, return_tx))
+            .await?;
+        args_tx.send(args).await?;
 
         Ok(ProcessHandle {
             recv: return_rx,
-            state: Arc::new(ProcessHandleState::new(Some(process.id()))),
+            state: Arc::new(ProcessHandleState::new(process.id())),
             process,
         })
     }
@@ -324,27 +313,12 @@ impl ProcessHandleState {
             x => Some(x as u32),
         }
     }
-
-    pub fn kill(&self) {
-        if !self.exited.load(Ordering::SeqCst) {
-            self.exited.store(true, Ordering::SeqCst);
-            if let Some(pid) = self.pid() {
-                unsafe {
-                    libc::kill(pid as i32, libc::SIGKILL);
-                }
-            }
-        }
-    }
 }
 
 pub struct ProcessHandle<T> {
-    pub(crate) recv: IpcReceiver<Result<T, PanicInfo>>,
+    pub(crate) recv: Receiver<Result<T, PanicInfo>>,
     pub(crate) process: process::Child,
     pub(crate) state: Arc<ProcessHandleState>,
-}
-
-fn is_ipc_timeout(err: &ipc_channel::ipc::TryRecvError) -> bool {
-    matches!(err, ipc_channel::ipc::TryRecvError::Empty)
 }
 
 impl<T> ProcessHandle<T> {
@@ -352,13 +326,13 @@ impl<T> ProcessHandle<T> {
         self.state.clone()
     }
 
-    pub fn kill(&mut self) -> Result<(), SpawnError> {
+    pub async fn kill(&mut self) -> Result<(), SpawnError> {
         if self.state.exited.load(Ordering::SeqCst) {
             return Ok(());
         }
 
-        let rv = self.process.kill().map_err(Into::into);
-        self.wait();
+        let rv = self.process.kill().await.map_err(Into::into);
+        self.wait().await;
         rv
     }
 
@@ -374,50 +348,22 @@ impl<T> ProcessHandle<T> {
         self.process.stderr.as_mut()
     }
 
-    fn wait(&mut self) {
-        self.process.wait().ok();
+    async fn wait(&mut self) {
+        self.process.wait().await.ok();
         self.state.exited.store(true, Ordering::SeqCst);
     }
 }
 
 impl<T: Serialize + DeserializeOwned> ProcessHandle<T> {
-    pub fn join(&mut self) -> Result<T, SpawnError> {
-        let rv = with_ipc_mode(|| self.recv.recv())?.map_err(Into::into);
-        self.wait();
-        rv
-    }
-
-    pub fn join_timeout(&mut self, timeout: Duration) -> Result<T, SpawnError> {
-        let deadline = match Instant::now().checked_add(timeout) {
-            Some(deadline) => deadline,
-            None => {
-                return Err(io::Error::new(io::ErrorKind::Other, "timeout out of bounds").into())
-            }
-        };
-        let mut to_sleep = Duration::from_millis(1);
-        let rv = loop {
-            match with_ipc_mode(|| self.recv.try_recv()) {
-                Ok(rv) => break rv.map_err(Into::into),
-                Err(err) if is_ipc_timeout(&err) => {
-                    if let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
-                        thread::sleep(remaining.min(to_sleep));
-                        to_sleep *= 2;
-                    } else {
-                        return Err(SpawnError::new_timeout());
-                    }
-                }
-                Err(err) => return Err(err.into()),
-            }
-        };
-
-        self.wait();
+    pub async fn join(&mut self) -> Result<T, SpawnError> {
+        let rv = self.recv.recv().await?.map_err(Into::into);
+        self.wait().await;
         rv
     }
 }
 
 pub enum JoinHandleInner<T> {
     Process(ProcessHandle<T>),
-    Pooled(PooledHandle<T>),
 }
 
 /// An owned permission to join on a process (block on its termination).
@@ -440,7 +386,6 @@ impl<T> JoinHandle<T> {
     pub(crate) fn process_handle_state(&self) -> Option<Arc<ProcessHandleState>> {
         match self.inner {
             Ok(JoinHandleInner::Process(ref handle)) => Some(handle.state()),
-            Ok(JoinHandleInner::Pooled(ref handle)) => handle.process_handle_state(),
             Err(..) => None,
         }
     }
@@ -461,10 +406,9 @@ impl<T> JoinHandle<T> {
     /// * if the call was already picked up by the process, the process will
     ///   be killed.
     /// * if the call was not yet scheduled to a process it will be cancelled.
-    pub fn kill(&mut self) -> Result<(), SpawnError> {
+    pub async fn kill(&mut self) -> Result<(), SpawnError> {
         match self.inner {
-            Ok(JoinHandleInner::Process(ref mut handle)) => handle.kill(),
-            Ok(JoinHandleInner::Pooled(ref mut handle)) => handle.kill(),
+            Ok(JoinHandleInner::Process(ref mut handle)) => handle.kill().await,
             Err(_) => Ok(()),
         }
     }
@@ -473,7 +417,6 @@ impl<T> JoinHandle<T> {
     pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
         match self.inner {
             Ok(JoinHandleInner::Process(ref mut process)) => process.stdin(),
-            Ok(JoinHandleInner::Pooled(..)) => None,
             Err(_) => None,
         }
     }
@@ -482,7 +425,6 @@ impl<T> JoinHandle<T> {
     pub fn stdout(&mut self) -> Option<&mut ChildStdout> {
         match self.inner {
             Ok(JoinHandleInner::Process(ref mut process)) => process.stdout(),
-            Ok(JoinHandleInner::Pooled(..)) => None,
             Err(_) => None,
         }
     }
@@ -491,7 +433,6 @@ impl<T> JoinHandle<T> {
     pub fn stderr(&mut self) -> Option<&mut ChildStderr> {
         match self.inner {
             Ok(JoinHandleInner::Process(ref mut process)) => process.stderr(),
-            Ok(JoinHandleInner::Pooled(..)) => None,
             Err(_) => None,
         }
     }
@@ -501,19 +442,9 @@ impl<T: Serialize + DeserializeOwned> JoinHandle<T> {
     /// Wait for the child process to return a result.
     ///
     /// If the join handle was created from a pool the join is virtualized.
-    pub fn join(self) -> Result<T, SpawnError> {
+    pub async fn join(self) -> Result<T, SpawnError> {
         match self.inner {
-            Ok(JoinHandleInner::Process(mut handle)) => handle.join(),
-            Ok(JoinHandleInner::Pooled(mut handle)) => handle.join(),
-            Err(err) => Err(err),
-        }
-    }
-
-    /// Like `join` but with a timeout.
-    pub fn join_timeout(self, timeout: Duration) -> Result<T, SpawnError> {
-        match self.inner {
-            Ok(JoinHandleInner::Process(mut handle)) => handle.join_timeout(timeout),
-            Ok(JoinHandleInner::Pooled(mut handle)) => handle.join_timeout(timeout),
+            Ok(JoinHandleInner::Process(mut handle)) => handle.join().await,
             Err(err) => Err(err),
         }
     }
@@ -533,9 +464,9 @@ impl<T: Serialize + DeserializeOwned> JoinHandle<T> {
 /// });
 /// let result = handle.join().unwrap();
 /// ```
-pub fn spawn<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
+pub async fn spawn<A: Serialize + DeserializeOwned, R: Serialize + DeserializeOwned>(
     args: A,
     f: fn(A) -> R,
 ) -> JoinHandle<R> {
-    Builder::new().spawn(args, f)
+    Builder::new().spawn(args, f).await
 }
