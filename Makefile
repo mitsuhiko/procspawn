@@ -39,7 +39,7 @@ checkall:
 testall:
 	cargo check --no-default-features --all
 	cargo check --no-default-features --features test-support --all
-	cargo test --all-features --all -- --nocapture
+	cargo test --all-features --all --
 	cargo run --all-features --example join
 	cargo run --all-features --example kill
 	cargo run --all-features --example panic
