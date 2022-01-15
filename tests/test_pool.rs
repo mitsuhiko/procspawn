@@ -22,6 +22,7 @@ fn test_basic() {
     let mut ok = 0;
     let mut failed = 0;
     for handle in handles {
+        dbg!(&handle);
         if handle.join().is_ok() {
             ok += 1;
         } else {
@@ -31,6 +32,7 @@ fn test_basic() {
 
     assert_eq!(ok, 12);
     assert_eq!(failed, 4);
+    todo!();
 }
 
 #[test]
