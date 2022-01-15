@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.1
+
+* Fixed some clippy warnings.
+* Fixed a test that timed out in CI.
+
+## 0.10.0
+
+* Upgraded ctor
+* Name the pool monitoring threads
+
 ## 0.9.0
 
 * Removed experimental async support.

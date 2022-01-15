@@ -1,6 +1,6 @@
 [package]
 name = "procspawn"
-version = "0.10.0"
+version = "0.10.1"
 authors = ["Armin Ronacher <armin.ronacher@active-4.com>", "Manish Goregaokar <manishsmail@gmail.com>"]
 edition = "2018"
 license = "MIT/Apache-2.0"
@@ -29,7 +29,6 @@ libc = "0.2.66"
 ctor = { version = "0.1.20", optional = true }
 serde_json = { version = "1.0.47", optional = true }
 findshlibs = { version = "0.10.2", optional = true }
-futures = { version = "0.3.4", optional = true, default-features = false, features = ["std"] }
 
 [[example]]
 name = "panic"
