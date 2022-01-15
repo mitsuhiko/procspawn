@@ -1,5 +1,10 @@
 # procspawn
 
+[![Build Status](https://github.com/mitsuhiko/procspawn/workflows/Tests/badge.svg?branch=master)](https://github.com/mitsuhiko/procspawn/actions?query=workflow%3ATests)
+[![Crates.io](https://img.shields.io/crates/d/procspawn.svg)](https://crates.io/crates/procspawn)
+[![Documentation](https://docs.rs/procspawn/badge.svg)](https://docs.rs/procspawn)
+[![rustc 1.42.0](https://img.shields.io/badge/rust-1.42%2B-orange.svg)](https://img.shields.io/badge/rust-1.42%2B-orange.svg)
+
 This crate provides the ability to spawn processes with a function similar
 to `thread::spawn`.
 
@@ -36,143 +41,9 @@ let handle = procspawn::spawn(data, |data| {
 let result = handle.join().unwrap();
 ```
 
-Because `procspawn` will invoke a subprocess and there is currently no
-reliable way to intercept `main` in Rust it's necessary for you to call
-[`procspawn::init`](https://docs.rs/procspawn/latest/procspawn/fn.init.html) explicitly an early time in the program.
+## License and Links
 
-Alternatively you can use the [`ProcConfig`](https://docs.rs/procspawn/latest/procspawn/struct.ProcConfig.html)
-builder object to initialize the process which gives you some extra
-abilities to customize the processes spawned.  This for instance lets you
-disable the default panic handling.
-
-[`spawn`](https://docs.rs/procspawn/latest/procspawn/fn.spawn.html) can pass arbitrary serializable data, including
-IPC senders and receivers from the [`ipc-channel`](https://crates.io/crates/ipc-channel)
-crate, down to the new process.
-
-## Pools
-
-The default way to spawn processes will start and stop processes constantly.
-For more uses it's a better idea to spawn a [`Pool`](https://docs.rs/procspawn/latest/procspawn/struct.Pool.html)
-which will keep processes around for reuse.  Between calls the processes
-will stay around which also means the can keep state between calls if
-needed.
-
-## Panics
-
-By default panics are captured and serialized across process boundaries.
-This requires that the `backtrace` crate is used with serialization support.
-If you do not need this feature you can disable the `backtrace` crate and
-disable panic handling through the [`ProcConfig`](https://docs.rs/procspawn/latest/procspawn/struct.ProcConfig.html)
-object.
-
-## Feature Flags
-
-The following feature flags exist:
-
-* `safe-shared-libraries`: this feature is enabled by default.  When this
-  feature is disable then no validation about shared library load status
-  is performed around IPC calls.  This is highly unsafe if shared libraries
-  are being used and a function from a shared library is spawned.
-* `backtrace`: this feature is enabled by default.  When in use then
-  backtraces are captured with the `backtrace-rs` crate and serialized
-  across process boundaries.
-* `test-support`: when this feature is enabled procspawn can be used
-  with rusttest.  See [`testing`](https://docs.rs/procspawn/latest/procspawn/#testing) for more information.
-* `json`: enables optional JSON serialization.  For more information see
-  [Bincode Limitations](https://docs.rs/procspawn/latest/procspawn/#bincode-limitations).
-
-## Bincode Limitations
-
-This crate uses [`bincode`](https://github.com/servo/bincode) internally
-for inter process communication.  Bincode currently has some limitations
-which make some serde features incompatible with it.  Most notably if you
-use `#[serde(flatten)]` data cannot be sent across the processes.  To
-work around this you can enable the `json` feature and wrap affected objects
-in the [`Json`](serde/struct.Json.html) wrapper to force JSON serialization.
-
-## Testing
-
-Due to limitations of the rusttest testing system there are some
-restrictions to how this crate operates.  First of all you need to enable
-the `test-support` feature for `procspawn` to work with rusttest at all.
-Secondly your tests need to invoke the
-[`enable_test_support!`](https://docs.rs/procspawn/latest/procspawn/macro.enable_test_support.html) macro once
-top-level.
-
-With this done the following behavior applies:
-
-* Tests behave as if `procspawn::init` was called (that means with the
-  default arguments).  Other configuration is not supported.
-* procspawn will register a dummy test (named `procspawn_test_helper`)
-  which doesn't do anything when called directly, but acts as the spawning
-  helper for all `spawn` calls.
-* stdout is silenced by default unless `--show-output` or `--nocapture`
-  is passed to tests.
-* when trying to spawn with intercepted `stdout` be aware that there is
-  extra noise that will be emitted by rusttest.
-
-```rust
-procspawn::enable_test_support!();
-
-#[test]
-fn test_basic() {
-    let handle = procspawn::spawn((1, 2), |(a, b)| a + b);
-    let value = handle.join().unwrap();
-    assert_eq!(value, 3);
-}
-```
-
-## Shared Libraries
-
-`procspawn` uses the [`findshlibs`](https://github.com/gimli-rs/findshlibs)
-crate to determine where a function is located in memory in both processes.
-If a shared library is not loaded in the subprocess (because for instance it
-is loaded at runtime) then the call will fail.  Because this adds quite
-some overhead over every call you can also disable the `safe-shared-libraries`
-feature (which is on by default) in which case you are not allowed to
-invoke functions from shared libraries and no validation is performed.
-
-This in normal circumstances should be okay but you need to validate this.
-Spawning processes will be disabled if the feature is not enabled until
-you call the [`assert_spawn_is_safe`](https://docs.rs/procspawn/latest/procspawn/fn.assert_spawn_is_safe.html) function.
-
-## Macros
-
-Alternatively the [`spawn!`](https://docs.rs/procspawn/latest/procspawn/macro.spawn.html) macro can be used which can
-make passing more than one argument easier:
-
-```rust
-let a = 42u32;
-let b = 23u32;
-let c = 1;
-let handle = procspawn::spawn!((a => base, b, mut c) || -> Result<_, ()> {
-    c += 1;
-    Ok(base + b + c)
-});
-```
-
-## Platform Support
-
-Currently this crate only supports macOS and Linux because ipc-channel
-itself does not support Windows yet.  Additionally the findshlibs which is
-used for the `safe-shared-libraries` feature also does not yet support
-Windows.
-
-## More Examples
-
-Here are some examples of `procspawn` in action:
-
-* [simple.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/simple.rs):
-  a very simple example showing the basics.
-* [args.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/args.rs):
-  shows how arguments are available to the subprocess as well.
-* [timeout.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/timeout.rs):
-  shows how you can wait on a process with timeouts.
-* [bad-serialization.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/bad-serialization.rs):
-  shows JSON based workarounds for bincode limitations.
-* [macro.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/macro.rs):
-  demonstrates macro usage.
-
-More examples can be found in the example folder: [examples](https://github.com/mitsuhiko/procspawn/tree/master/examples)
-
-License: MIT/Apache-2.0
+- [Documentation](https://docs.rs/procspawn/)
+- [Issue Tracker](https://github.com/mitsuhiko/procspawn/issues)
+- [Examples](https://github.com/mitsuhiko/procspawn/tree/master/examples)
+- License: [Apache-2.0](https://github.com/mitsuhiko/procspawn/blob/master/LICENSE-APACHE)

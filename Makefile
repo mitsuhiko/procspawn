@@ -52,7 +52,3 @@ testall:
 	cargo run --all-features --example custom-serialization
 	cargo run --all-features --example args -- 1 2 3
 .PHONY: testall
-
-readme:
-	cargo readme | perl -p -e "s/\]\(([^\/]+)\)/](https:\/\/docs.rs\/procspawn\/latest\/procspawn\/\\1)/" > README.md
-.PHONY: readme
