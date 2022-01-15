@@ -22,7 +22,7 @@ fn test_basic() {
     let mut ok = 0;
     let mut failed = 0;
     for handle in handles {
-        if handle.join().is_ok() {
+        if handle.join_timeout(Duration::from_secs(5)).is_ok() {
             ok += 1;
         } else {
             failed += 1;
