@@ -190,7 +190,7 @@ impl ProcConfig {
             if let Some(callback) = self.callback.take() {
                 callback();
             }
-            bootstrap_ipc(token, &self);
+            bootstrap_ipc(token, self);
         }
     }
 
@@ -347,7 +347,6 @@ unsafe fn run_func<A, R>(
             if io.kind() == io::ErrorKind::NotFound || io.kind() == io::ErrorKind::ConnectionReset {
                 // this error is okay.  this means nobody actually
                 // waited for the call, so we just ignore it.
-                return;
             }
         } else {
             Err::<(), _>(err).expect("could not send event over ipc channel");

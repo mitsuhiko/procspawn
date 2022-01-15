@@ -11,7 +11,7 @@ fn test_basic() {
     let handle = spawn(true, |b| !b);
     let value = handle.join().unwrap();
 
-    assert_eq!(value, false);
+    assert!(!value);
 }
 
 #[test]

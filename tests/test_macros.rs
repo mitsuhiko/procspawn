@@ -6,7 +6,7 @@ procspawn::enable_test_support!();
 fn test_macro_no_args() {
     let handle = spawn!(() || false);
     let value = handle.join().unwrap();
-    assert_eq!(value, false);
+    assert!(!value);
 }
 
 #[test]

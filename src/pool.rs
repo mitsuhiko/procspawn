@@ -311,7 +311,7 @@ impl PoolBuilder {
         {
             let mut monitors = shared.monitors.lock().unwrap();
             for _ in 0..self.size {
-                monitors.push(spawn_worker(shared.clone(), &self)?);
+                monitors.push(spawn_worker(shared.clone(), self)?);
             }
         }
 
