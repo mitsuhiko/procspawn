@@ -11,6 +11,7 @@ keywords = ["proc", "spawn", "subprocess"]
 readme = "README.md"
 autoexamples = true
 autotests = true
+rust-version = "1.42.0"
 
 [package.metadata.docs.rs]
 all-features = true
