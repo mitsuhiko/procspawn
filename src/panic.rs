@@ -59,7 +59,7 @@ pub fn init_panic_hook(capture_backtraces: BacktraceCapture) {
 
 fn serialize_panic(panic: &(dyn Any + Send + 'static)) -> PanicInfo {
     PanicInfo::new(match panic.downcast_ref::<&'static str>() {
-        Some(s) => *s,
+        Some(s) => s,
         None => match panic.downcast_ref::<String>() {
             Some(s) => &s[..],
             None => "Box<Any>",

@@ -289,7 +289,7 @@ impl MarshalledCall {
     {
         let (lib_name, offset) = find_library_name_and_offset(f as *const () as *const u8);
         let init_loc = init as *const () as isize;
-        let fn_offset = f as *const () as isize - offset as isize;
+        let fn_offset = f as *const () as isize - offset;
         let wrapper_offset = run_func::<A, R> as *const () as isize - init_loc;
         MarshalledCall {
             lib_name,
@@ -327,7 +327,7 @@ unsafe fn run_func<A, R>(
     A: Serialize + for<'de> Deserialize<'de>,
     R: Serialize + for<'de> Deserialize<'de>,
 {
-    let lib_offset = find_shared_library_offset_by_name(lib_name) as isize;
+    let lib_offset = find_shared_library_offset_by_name(lib_name);
     let function: fn(A) -> R = mem::transmute(fn_offset + lib_offset as *const () as isize);
     let args = with_ipc_mode(|| args_recv.to().recv().unwrap());
     let rv = if panic_handling {

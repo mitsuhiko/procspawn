@@ -246,7 +246,7 @@ impl Builder {
             if let Some(ref func) = self.common.pre_exec {
                 let func = func.clone();
                 unsafe {
-                    child.pre_exec(move || (&mut *func.lock().unwrap())());
+                    child.pre_exec(move || (*func.lock().unwrap())());
                 }
             }
         }

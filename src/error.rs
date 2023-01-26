@@ -183,12 +183,12 @@ impl SpawnError {
 impl std::error::Error for SpawnError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self.kind {
-            SpawnErrorKind::Bincode(ref err) => Some(&*err),
-            SpawnErrorKind::Io(ref err) => Some(&*err),
+            SpawnErrorKind::Bincode(ref err) => Some(err),
+            SpawnErrorKind::Io(ref err) => Some(err),
             SpawnErrorKind::Panic(_) => None,
             SpawnErrorKind::Cancelled => None,
             SpawnErrorKind::TimedOut => None,
-            SpawnErrorKind::IpcChannelClosed(ref err) => Some(&*err),
+            SpawnErrorKind::IpcChannelClosed(ref err) => Some(err),
         }
     }
 }
