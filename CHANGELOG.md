@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.2
+
+* Update ipc-channel to 0.16
+
 ## 0.10.1
 
 * Fixed some clippy warnings.
