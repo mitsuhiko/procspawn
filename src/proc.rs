@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{env, mem, process};
 use std::{io, thread};
@@ -18,6 +18,7 @@ use crate::error::{PanicInfo, SpawnError};
 use crate::pool::PooledHandle;
 use crate::serde::with_ipc_mode;
 
+#[cfg(unix)]
 type PreExecFunc = dyn FnMut() -> io::Result<()> + Send + Sync + 'static;
 
 #[derive(Clone)]
@@ -28,7 +29,7 @@ pub struct ProcCommon {
     #[cfg(unix)]
     pub gid: Option<u32>,
     #[cfg(unix)]
-    pub pre_exec: Option<Arc<Mutex<Box<PreExecFunc>>>>,
+    pub pre_exec: Option<Arc<std::sync::Mutex<Box<PreExecFunc>>>>,
 }
 
 impl fmt::Debug for ProcCommon {
@@ -152,7 +153,7 @@ macro_rules! define_common_methods {
         where
             F: FnMut() -> io::Result<()> + Send + Sync + 'static,
         {
-            self.common.pre_exec = Some(Arc::new(Mutex::new(Box::new(f))));
+            self.common.pre_exec = Some(Arc::new(std::sync::Mutex::new(Box::new(f))));
             self
         }
     };
@@ -331,7 +332,19 @@ impl ProcessHandleState {
             self.exited.store(true, Ordering::SeqCst);
             if let Some(pid) = self.pid() {
                 unsafe {
-                    libc::kill(pid as i32, libc::SIGKILL);
+                    #[cfg(unix)]
+                    {
+                        libc::kill(pid as i32, libc::SIGKILL);
+                    }
+                    #[cfg(windows)]
+                    {
+                        let proc = winapi::um::processthreadsapi::OpenProcess(
+                            winapi::um::winnt::PROCESS_ALL_ACCESS,
+                            0,
+                            pid as _,
+                        );
+                        winapi::um::processthreadsapi::TerminateProcess(proc, 1);
+                    }
                 }
             }
         }

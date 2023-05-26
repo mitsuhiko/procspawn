@@ -415,8 +415,8 @@ fn spawn_worker(
             // indicate an error.
             if let Some(join_handle) = join_handle.lock().unwrap().take() {
                 match join_handle.join() {
-                    Ok(()) => f(SpawnError::from(std::io::Error::new(
-                        std::io::ErrorKind::BrokenPipe,
+                    Ok(()) => f(SpawnError::from(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
                         "client process died",
                     ))),
                     Err(err) => f(err),
