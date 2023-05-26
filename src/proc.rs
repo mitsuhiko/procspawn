@@ -6,9 +6,13 @@ use std::process::Stdio;
 use std::process::{ChildStderr, ChildStdin, ChildStdout};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 use std::{env, mem, process};
-use std::{io, thread};
+
+#[cfg(unix)]
+use std::{
+    io, thread,
+    time::{Duration, Instant},
+};
 
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
 use serde::{de::DeserializeOwned, Serialize};
@@ -357,6 +361,7 @@ pub struct ProcessHandle<T> {
     pub(crate) state: Arc<ProcessHandleState>,
 }
 
+#[cfg(unix)]
 fn is_ipc_timeout(err: &ipc_channel::ipc::TryRecvError) -> bool {
     matches!(err, ipc_channel::ipc::TryRecvError::Empty)
 }
@@ -401,6 +406,7 @@ impl<T: Serialize + DeserializeOwned> ProcessHandle<T> {
         rv
     }
 
+    #[cfg(unix)]
     pub fn join_timeout(&mut self, timeout: Duration) -> Result<T, SpawnError> {
         let deadline = match Instant::now().checked_add(timeout) {
             Some(deadline) => deadline,
@@ -524,6 +530,7 @@ impl<T: Serialize + DeserializeOwned> JoinHandle<T> {
     }
 
     /// Like `join` but with a timeout.
+    #[cfg(unix)]
     pub fn join_timeout(self, timeout: Duration) -> Result<T, SpawnError> {
         match self.inner {
             Ok(JoinHandleInner::Process(mut handle)) => handle.join_timeout(timeout),

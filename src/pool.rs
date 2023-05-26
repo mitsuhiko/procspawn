@@ -5,6 +5,8 @@ use std::process;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
+
+#[cfg(unix)]
 use std::time::Duration;
 
 use ipc_channel::ipc;
@@ -58,6 +60,7 @@ impl<T: Serialize + DeserializeOwned> PooledHandle<T> {
         }
     }
 
+    #[cfg(unix)]
     pub fn join_timeout(&mut self, timeout: Duration) -> Result<T, SpawnError> {
         match self.waiter_rx.recv_timeout(timeout) {
             Ok(Ok(rv)) => Ok(rv),

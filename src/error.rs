@@ -125,6 +125,7 @@ enum SpawnErrorKind {
     Panic(PanicInfo),
     IpcChannelClosed(io::Error),
     Cancelled,
+    #[allow(unused)]
     TimedOut,
 }
 
@@ -173,6 +174,7 @@ impl SpawnError {
         }
     }
 
+    #[cfg(unix)]
     pub(crate) fn new_timeout() -> SpawnError {
         SpawnError {
             kind: SpawnErrorKind::TimedOut,

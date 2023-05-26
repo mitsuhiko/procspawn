@@ -9,5 +9,13 @@ fn main() {
         thread::sleep(Duration::from_secs(10));
     });
 
-    println!("result: {:?}", handle.join_timeout(Duration::from_secs(1)));
+    #[cfg(unix)]
+    {
+        println!("result: {:?}", handle.join_timeout(Duration::from_secs(1)));
+    }
+    #[cfg(windows)]
+    {
+        eprintln!("Warning: windows does not yet support timeouts");
+        println!("result: {:?}", handle.join());
+    }
 }

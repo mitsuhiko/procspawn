@@ -22,7 +22,7 @@ fn test_basic() {
     let mut ok = 0;
     let mut failed = 0;
     for handle in handles {
-        if handle.join_timeout(Duration::from_secs(5)).is_ok() {
+        if handle.join().is_ok() {
             ok += 1;
         } else {
             failed += 1;
@@ -59,6 +59,7 @@ fn test_overload() {
 }
 
 #[test]
+#[cfg(unix)]
 fn test_timeout() {
     let pool = Pool::new(2).unwrap();
 

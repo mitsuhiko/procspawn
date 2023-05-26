@@ -72,6 +72,7 @@ fn test_nested() {
 }
 
 #[test]
+#[cfg(unix)]
 fn test_timeout() {
     let handle = spawn((), |()| {
         thread::sleep(Duration::from_secs(10));
