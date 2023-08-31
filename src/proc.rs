@@ -232,7 +232,7 @@ impl Builder {
             env::current_exe()?
         };
         let mut child = process::Command::new(me);
-        child.envs(self.common.vars.into_iter());
+        child.envs(self.common.vars);
         child.env(ENV_NAME, token);
 
         #[cfg(unix)]

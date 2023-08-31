@@ -253,7 +253,7 @@ fn bootstrap_ipc(token: String, config: &ProcConfig) {
                 Ok(sender) => sender,
                 Err(err) => {
                     if !is_benign_bootstrap_error(&err) {
-                        Err::<(), _>(err).expect("could not bootstrap ipc connection");
+                        panic!("could not bootstrap ipc connection: {:?}", err);
                     }
                     process::exit(1);
                 }
@@ -349,7 +349,7 @@ unsafe fn run_func<A, R>(
                 // waited for the call, so we just ignore it.
             }
         } else {
-            Err::<(), _>(err).expect("could not send event over ipc channel");
+            panic!("could not send event over ipc channel: {:?}", err);
         }
     }
 }

@@ -3,7 +3,7 @@
 [![Build Status](https://github.com/mitsuhiko/procspawn/workflows/Tests/badge.svg?branch=master)](https://github.com/mitsuhiko/procspawn/actions?query=workflow%3ATests)
 [![Crates.io](https://img.shields.io/crates/d/procspawn.svg)](https://crates.io/crates/procspawn)
 [![Documentation](https://docs.rs/procspawn/badge.svg)](https://docs.rs/procspawn)
-[![rustc 1.42.0](https://img.shields.io/badge/rust-1.42%2B-orange.svg)](https://img.shields.io/badge/rust-1.42%2B-orange.svg)
+[![rustc 1.56.0](https://img.shields.io/badge/rust-1.56%2B-orange.svg)](https://img.shields.io/badge/rust-1.56%2B-orange.svg)
 
 This crate provides the ability to spawn processes with a function similar
 to `thread::spawn`.  Instead of closures it passes [`serde`](https://serde.rs/)
