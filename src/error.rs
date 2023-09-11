@@ -181,7 +181,9 @@ impl SpawnError {
     }
 
     pub(crate) fn new_consumed() -> SpawnError {
-        SpawnError { kind: SpawnErrorKind::Consumed }
+        SpawnError {
+            kind: SpawnErrorKind::Consumed,
+        }
     }
 }
 
