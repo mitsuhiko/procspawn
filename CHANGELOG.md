@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.0
+
+* Changes the `join` and `join_timeout` API to no longer consume the handle.
+
 ## 0.10.3
 
 * Update ipc-channel to 0.16.1.
