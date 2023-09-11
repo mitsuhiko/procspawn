@@ -73,14 +73,14 @@ fn test_nested() {
 
 #[test]
 fn test_timeout() {
-    let handle = spawn((), |()| {
+    let mut handle = spawn((), |()| {
         thread::sleep(Duration::from_secs(10));
     });
 
     let err = handle.join_timeout(Duration::from_millis(100)).unwrap_err();
     assert!(err.is_timeout());
 
-    let handle = spawn((), |()| {
+    let mut handle = spawn((), |()| {
         thread::sleep(Duration::from_millis(100));
         42
     });

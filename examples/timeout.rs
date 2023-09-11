@@ -5,7 +5,7 @@ use std::time::Duration;
 fn main() {
     procspawn::init();
 
-    let handle = spawn((), |()| {
+    let mut handle = spawn((), |()| {
         thread::sleep(Duration::from_secs(10));
     });
 
