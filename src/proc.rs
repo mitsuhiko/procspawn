@@ -524,11 +524,29 @@ impl<T: Serialize + DeserializeOwned> JoinHandle<T> {
     }
 
     /// Like `join` but with a timeout.
-    pub fn join_timeout(self, timeout: Duration) -> Result<T, SpawnError> {
+    ///
+    /// Can be called multiple times. If anything other than a timeout error is returned, the
+    /// handle becomes unusuable, and subsequent calls to either `join` or `join_timeout` will
+    /// return an error.
+    pub fn join_timeout(&mut self, timeout: Duration) -> Result<T, SpawnError> {
         match self.inner {
-            Ok(JoinHandleInner::Process(mut handle)) => handle.join_timeout(timeout),
-            Ok(JoinHandleInner::Pooled(mut handle)) => handle.join_timeout(timeout),
-            Err(err) => Err(err),
+            Ok(ref mut handle_inner) => {
+                let result = match handle_inner {
+                    JoinHandleInner::Process(ref mut handle) => handle.join_timeout(timeout),
+                    JoinHandleInner::Pooled(ref mut handle) => handle.join_timeout(timeout),
+                };
+
+                if result.is_ok() {
+                    self.inner = Err(SpawnError::new_consumed());
+                }
+
+                result
+            }
+            Err(ref mut err) => {
+                let mut rv_err = SpawnError::new_consumed();
+                mem::swap(&mut rv_err, err);
+                Err(rv_err)
+            }
         }
     }
 }

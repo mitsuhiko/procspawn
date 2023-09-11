@@ -126,6 +126,7 @@ enum SpawnErrorKind {
     IpcChannelClosed(io::Error),
     Cancelled,
     TimedOut,
+    Consumed,
 }
 
 impl SpawnError {
@@ -178,6 +179,10 @@ impl SpawnError {
             kind: SpawnErrorKind::TimedOut,
         }
     }
+
+    pub(crate) fn new_consumed() -> SpawnError {
+        SpawnError { kind: SpawnErrorKind::Consumed }
+    }
 }
 
 impl std::error::Error for SpawnError {
@@ -188,6 +193,7 @@ impl std::error::Error for SpawnError {
             SpawnErrorKind::Panic(_) => None,
             SpawnErrorKind::Cancelled => None,
             SpawnErrorKind::TimedOut => None,
+            SpawnErrorKind::Consumed => None,
             SpawnErrorKind::IpcChannelClosed(ref err) => Some(err),
         }
     }
@@ -201,6 +207,7 @@ impl fmt::Display for SpawnError {
             SpawnErrorKind::Panic(ref p) => write!(f, "process spawn error: panic: {}", p),
             SpawnErrorKind::Cancelled => write!(f, "process spawn error: call cancelled"),
             SpawnErrorKind::TimedOut => write!(f, "process spawn error: timed out"),
+            SpawnErrorKind::Consumed => write!(f, "process spawn error: result already consumed"),
             SpawnErrorKind::IpcChannelClosed(_) => write!(
                 f,
                 "process spawn error: remote side closed (might have panicked on serialization)"

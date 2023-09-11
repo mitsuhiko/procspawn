@@ -21,7 +21,7 @@ fn test_basic() {
 
     let mut ok = 0;
     let mut failed = 0;
-    for handle in handles {
+    for mut handle in handles {
         if handle.join_timeout(Duration::from_secs(5)).is_ok() {
             ok += 1;
         } else {
@@ -62,14 +62,14 @@ fn test_overload() {
 fn test_timeout() {
     let pool = Pool::new(2).unwrap();
 
-    let handle = pool.spawn((), |()| {
+    let mut handle = pool.spawn((), |()| {
         thread::sleep(Duration::from_secs(10));
     });
 
     let err = handle.join_timeout(Duration::from_millis(100)).unwrap_err();
     assert!(err.is_timeout());
 
-    let handle = pool.spawn((), |()| {
+    let mut handle = pool.spawn((), |()| {
         thread::sleep(Duration::from_millis(100));
         42
     });
