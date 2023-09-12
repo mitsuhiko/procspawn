@@ -77,3 +77,22 @@ fn test_timeout() {
     let val = handle.join_timeout(Duration::from_secs(2)).unwrap();
     assert_eq!(val, 42);
 }
+
+#[test]
+fn test_timeout_twice() {
+    let pool = Pool::new(2).unwrap();
+
+    let mut handle = pool.spawn((), |()| {
+        thread::sleep(Duration::from_secs(5));
+        42
+    });
+
+    let err = handle.join_timeout(Duration::from_millis(100)).unwrap_err();
+    assert!(err.is_timeout());
+
+    let err = handle.join_timeout(Duration::from_millis(100)).unwrap_err();
+    assert!(err.is_timeout());
+
+    let val = handle.join_timeout(Duration::from_secs(6)).unwrap();
+    assert_eq!(val, 42);
+}
