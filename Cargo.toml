@@ -6,7 +6,7 @@ authors = [
     "Manish Goregaokar <manishsmail@gmail.com>",
 ]
 edition = "2018"
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 description = "thread::spawn just with processes"
 homepage = "https://github.com/mitsuhiko/procspawn"
 repository = "https://github.com/mitsuhiko/procspawn"
