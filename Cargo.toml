@@ -21,7 +21,7 @@ all-features = true
 
 [features]
 default = ["backtrace", "safe-shared-libraries"]
-test-support = ["ctor"]
+test-support = ["small_ctor"]
 json = ["serde_json"]
 safe-shared-libraries = ["findshlibs"]
 
@@ -30,9 +30,9 @@ ipc-channel = "0.18.2"
 serde = { version = "1.0.104", features = ["derive"] }
 backtrace = { version = "0.3.43", optional = true, features = ["serde"] }
 libc = "0.2.66"
-ctor = { version = "0.1.20", optional = true }
 serde_json = { version = "1.0.47", optional = true }
 findshlibs = { version = "0.10.2", optional = true }
+small_ctor = { version = "0.1.2", optional = true }
 
 [target."cfg(windows)".dependencies]
 winapi = { version = "0.3.9", features = [
