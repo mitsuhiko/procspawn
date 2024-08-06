@@ -62,10 +62,7 @@ impl<T: Serialize + DeserializeOwned> PooledHandle<T> {
         match self.waiter_rx.recv_timeout(timeout) {
             Ok(Ok(rv)) => Ok(rv),
             Ok(Err(err)) => Err(err),
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                self.kill().ok();
-                Err(SpawnError::new_timeout())
-            }
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(SpawnError::new_timeout()),
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(SpawnError::new_remote_close()),
         }
     }

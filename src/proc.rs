@@ -513,11 +513,15 @@ impl<T: Serialize + DeserializeOwned> JoinHandle<T> {
     /// Wait for the child process to return a result.
     ///
     /// If the join handle was created from a pool the join is virtualized.
-    pub fn join(self) -> Result<T, SpawnError> {
-        match self.inner {
-            Ok(JoinHandleInner::Process(mut handle)) => handle.join(),
-            Ok(JoinHandleInner::Pooled(mut handle)) => handle.join(),
-            Err(err) => Err(err),
+    pub fn join(mut self) -> Result<T, SpawnError> {
+        match &mut self.inner {
+            Ok(JoinHandleInner::Process(ref mut handle)) => handle.join(),
+            Ok(JoinHandleInner::Pooled(ref mut handle)) => handle.join(),
+            Err(err) => {
+                let mut rv_err = SpawnError::new_consumed();
+                mem::swap(&mut rv_err, err);
+                Err(rv_err)
+            }
         }
     }
 
@@ -546,6 +550,12 @@ impl<T: Serialize + DeserializeOwned> JoinHandle<T> {
                 Err(rv_err)
             }
         }
+    }
+}
+
+impl<T> Drop for JoinHandle<T> {
+    fn drop(&mut self) {
+        self.kill().ok();
     }
 }
 
