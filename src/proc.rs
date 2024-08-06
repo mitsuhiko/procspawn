@@ -12,6 +12,7 @@ use std::{io, thread};
 
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
 use serde::{de::DeserializeOwned, Serialize};
+use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_ALL_ACCESS};
 
 use crate::core::{assert_spawn_okay, should_pass_args, MarshalledCall, ENV_NAME};
 use crate::error::{PanicInfo, SpawnError};
@@ -338,12 +339,8 @@ impl ProcessHandleState {
                     }
                     #[cfg(windows)]
                     {
-                        let proc = winapi::um::processthreadsapi::OpenProcess(
-                            winapi::um::winnt::PROCESS_ALL_ACCESS,
-                            0,
-                            pid as _,
-                        );
-                        winapi::um::processthreadsapi::TerminateProcess(proc, 1);
+                        let proc = OpenProcess(PROCESS_ALL_ACCESS, 0, pid as _);
+                        TerminateProcess(proc, 1);
                     }
                 }
             }
