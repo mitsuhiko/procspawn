@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1
+
+* Removed winapi dependency
+* Upgraded backtrace to newer minimal version
+* Bump MSRV to 1.70
+* Update ipc-channel dependency
+
 ## 1.0.0
 
 * Changes the `join` and `join_timeout` API to no longer consume the handle.
