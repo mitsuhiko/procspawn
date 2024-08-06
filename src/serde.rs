@@ -10,7 +10,7 @@ use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 thread_local! {
-    static IN_PROCSPAWN: AtomicBool = AtomicBool::new(false);
+    static IN_PROCSPAWN: AtomicBool = const { AtomicBool::new(false) };
 }
 
 struct ResetProcspawn(bool);

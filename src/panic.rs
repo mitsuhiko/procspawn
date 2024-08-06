@@ -5,7 +5,7 @@ use std::panic;
 use crate::error::{Location, PanicInfo};
 
 thread_local! {
-    static PANIC_INFO: RefCell<Option<PanicInfo>> = RefCell::new(None);
+    static PANIC_INFO: RefCell<Option<PanicInfo>> = const { RefCell::new(None) };
 }
 
 #[derive(Copy, Clone)]
