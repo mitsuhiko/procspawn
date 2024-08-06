@@ -9,7 +9,7 @@ static TEST_MODE: AtomicBool = AtomicBool::new(false);
 static TEST_MODULE: AtomicPtr<String> = AtomicPtr::new(std::ptr::null_mut());
 
 // we need this.
-pub use ctor::ctor;
+pub use small_ctor::ctor;
 
 /// Supports the use of procspawn in tests.
 ///
@@ -26,7 +26,7 @@ pub use ctor::ctor;
 macro_rules! enable_test_support {
     () => {
         #[$crate::testsupport::ctor]
-        fn __procspawn_test_support_init() {
+        unsafe fn __procspawn_test_support_init() {
             // strip the crate name from the module path
             let module_path = std::module_path!().splitn(2, "::").nth(1);
             $crate::testsupport::enable(module_path);
