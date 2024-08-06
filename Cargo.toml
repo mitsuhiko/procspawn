@@ -26,7 +26,7 @@ json = ["serde_json"]
 safe-shared-libraries = ["findshlibs"]
 
 [dependencies]
-ipc-channel = "0.16.1"
+ipc-channel = "0.18.2"
 serde = { version = "1.0.104", features = ["derive"] }
 backtrace = { version = "0.3.43", optional = true, features = ["serde"] }
 libc = "0.2.66"
