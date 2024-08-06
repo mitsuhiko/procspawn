@@ -338,12 +338,10 @@ impl ProcessHandleState {
                     }
                     #[cfg(windows)]
                     {
-                        let proc = winapi::um::processthreadsapi::OpenProcess(
-                            winapi::um::winnt::PROCESS_ALL_ACCESS,
-                            0,
-                            pid as _,
-                        );
-                        winapi::um::processthreadsapi::TerminateProcess(proc, 1);
+                        use windows_sys::Win32::System::Threading;
+                        let proc =
+                            Threading::OpenProcess(Threading::PROCESS_ALL_ACCESS, 0, pid as _);
+                        Threading::TerminateProcess(proc, 1);
                     }
                 }
             }
