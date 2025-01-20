@@ -29,6 +29,8 @@ pub fn take_panic(panic: &dyn Any) -> PanicInfo {
         .unwrap_or_else(move || serialize_panic(panic))
 }
 
+// PanicInfo is replaced by PanicHookInfo in 1.81 and deprecated in 1.82, but MSRV is 1.70
+#[allow(deprecated)]
 pub fn panic_handler(info: &panic::PanicInfo<'_>, capture_backtraces: BacktraceCapture) {
     PANIC_INFO.with(|pi| {
         #[allow(unused_mut)]

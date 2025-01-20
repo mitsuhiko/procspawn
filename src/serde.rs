@@ -61,7 +61,7 @@ impl fmt::Debug for Shmem {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         struct ByteRepr<'a>(&'a Shmem);
 
-        impl<'a> fmt::Debug for ByteRepr<'a> {
+        impl fmt::Debug for ByteRepr<'_> {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 write!(f, "b\"")?;
                 for &byte in self.0.as_bytes() {
