@@ -10,7 +10,7 @@ to `thread::spawn`.  Instead of closures it passes [`serde`](https://serde.rs/)
 serializable objects.  The return value from the spawned closure also must be
 serializable and can then be retrieved from the returned join handle.
 
-If the spawned functiom causes a panic it will also be serialized across
+If the spawned function causes a panic it will also be serialized across
 the process boundaries.
 
 ## Example
