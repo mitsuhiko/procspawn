@@ -20,7 +20,10 @@ the beginning of the main function).  Whatever happens before that point also
 happens in your spawned functions.
 
 ```rust
+// WARNING: code BEFORE `procspawn::init` MAYBE executed by subprocess spawned by `procspawn::spawn`
+// ...
 procspawn::init();
+
 ```
 
 Step 2: now you can start spawning functions:
