@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.2
+
+* Made timed joins safely retryable and ensured unfinished work is terminated when handles are dropped.
+* Fixed pool hangs after response deserialization failures.
+* Fixed `env_remove` and `env_clear` behavior when configuring child processes.
+* Reduced spawn and pool call overhead.
+* Upgraded `ipc-channel` to 0.22 and bumped the MSRV to 1.86.
+* Improved Windows process termination by requesting only the required permission and closing process handles.
+
 ## 1.0.1
 
 * Removed winapi dependency
