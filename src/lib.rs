@@ -21,10 +21,8 @@
 //! variables as the parent process.
 //!
 //! ```rust,no_run
-//! fn main() {
-//!     procspawn::init();
-//!     // Application setup starts here.
-//! }
+//! procspawn::init();
+//! // Application setup starts here.
 //! ```
 //!
 //! Now you can start spawning functions:
