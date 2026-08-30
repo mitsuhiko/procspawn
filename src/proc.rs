@@ -338,10 +338,15 @@ impl ProcessHandleState {
                     }
                     #[cfg(windows)]
                     {
-                        use windows_sys::Win32::System::Threading;
-                        let proc =
-                            Threading::OpenProcess(Threading::PROCESS_ALL_ACCESS, 0, pid as _);
-                        Threading::TerminateProcess(proc, 1);
+                        use windows::Win32::Foundation::CloseHandle;
+                        use windows::Win32::System::Threading::{
+                            OpenProcess, TerminateProcess, PROCESS_TERMINATE,
+                        };
+
+                        if let Ok(process) = OpenProcess(PROCESS_TERMINATE, false, pid) {
+                            TerminateProcess(process, 1).ok();
+                            CloseHandle(process).ok();
+                        }
                     }
                 }
             }
