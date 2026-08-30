@@ -53,6 +53,29 @@ fn test_envvar() {
 }
 
 #[test]
+fn test_env_remove() {
+    let removed = procspawn::Builder::new()
+        .env_remove("PATH")
+        .spawn((), |()| env::var_os("PATH").is_none())
+        .join()
+        .unwrap();
+    assert!(removed);
+}
+
+#[test]
+fn test_env_clear() {
+    let env = procspawn::Builder::new()
+        .env_clear()
+        .env("PROCSPAWN_TEST_ENV", "present")
+        .spawn((), |()| {
+            (env::var_os("PATH"), env::var("PROCSPAWN_TEST_ENV").unwrap())
+        })
+        .join()
+        .unwrap();
+    assert_eq!(env, (None, "present".to_string()));
+}
+
+#[test]
 fn test_nested() {
     let five = spawn(5, |x| {
         println!("1");

@@ -21,9 +21,10 @@ use crate::serde::with_ipc_mode;
 #[cfg(unix)]
 type PreExecFunc = dyn FnMut() -> io::Result<()> + Send + Sync + 'static;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ProcCommon {
-    pub vars: HashMap<OsString, OsString>,
+    pub vars: HashMap<OsString, Option<OsString>>,
+    pub clear_env: bool,
     #[cfg(unix)]
     pub uid: Option<u32>,
     #[cfg(unix)]
@@ -37,20 +38,6 @@ impl fmt::Debug for ProcCommon {
         f.debug_struct("ProcCommon")
             .field("vars", &self.vars)
             .finish()
-    }
-}
-
-impl Default for ProcCommon {
-    fn default() -> ProcCommon {
-        ProcCommon {
-            vars: std::env::vars_os().collect(),
-            #[cfg(unix)]
-            uid: None,
-            #[cfg(unix)]
-            gid: None,
-            #[cfg(unix)]
-            pre_exec: None,
-        }
     }
 }
 
@@ -78,7 +65,7 @@ macro_rules! define_common_methods {
         {
             self.common
                 .vars
-                .insert(key.as_ref().to_owned(), val.as_ref().to_owned());
+                .insert(key.as_ref().to_owned(), Some(val.as_ref().to_owned()));
             self
         }
 
@@ -93,7 +80,7 @@ macro_rules! define_common_methods {
         {
             self.common.vars.extend(
                 vars.into_iter()
-                    .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned())),
+                    .map(|(k, v)| (k.as_ref().to_owned(), Some(v.as_ref().to_owned()))),
             );
             self
         }
@@ -102,7 +89,7 @@ macro_rules! define_common_methods {
         ///
         /// Equivalent to `Command::env_remove`
         pub fn env_remove<K: AsRef<OsStr>>(&mut self, key: K) -> &mut Self {
-            self.common.vars.remove(key.as_ref());
+            self.common.vars.insert(key.as_ref().to_owned(), None);
             self
         }
 
@@ -111,6 +98,7 @@ macro_rules! define_common_methods {
         /// Equivalent to `Command::env_clear`
         pub fn env_clear(&mut self) -> &mut Self {
             self.common.vars.clear();
+            self.common.clear_env = true;
             self
         }
 
@@ -232,7 +220,19 @@ impl Builder {
             env::current_exe()?
         };
         let mut child = process::Command::new(me);
-        child.envs(self.common.vars);
+        if self.common.clear_env {
+            child.env_clear();
+        }
+        for (key, value) in self.common.vars {
+            match value {
+                Some(value) => {
+                    child.env(key, value);
+                }
+                None => {
+                    child.env_remove(key);
+                }
+            }
+        }
         child.env(ENV_NAME, token);
 
         #[cfg(unix)]

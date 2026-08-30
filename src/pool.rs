@@ -91,7 +91,7 @@ type PoolSender = mpsc::Sender<(
 ///
 /// This requires the `pool` feature.
 pub struct Pool {
-    sender: Mutex<PoolSender>,
+    sender: PoolSender,
     shared: Arc<PoolShared>,
 }
 
@@ -158,8 +158,6 @@ impl Pool {
         });
 
         self.sender
-            .lock()
-            .expect("pool sender poisoned")
             .send((
                 call,
                 shared.clone(),
@@ -315,10 +313,7 @@ impl PoolBuilder {
             }
         }
 
-        Ok(Pool {
-            sender: Mutex::new(tx),
-            shared,
-        })
+        Ok(Pool { sender: tx, shared })
     }
 }
 

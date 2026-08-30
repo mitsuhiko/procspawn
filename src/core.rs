@@ -1,3 +1,5 @@
+#[cfg(feature = "safe-shared-libraries")]
+use std::cell::RefCell;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::io;
@@ -20,6 +22,11 @@ use crate::serde::with_ipc_mode;
 pub const ENV_NAME: &str = "__PROCSPAWN_CONTENT_PROCESS_ID";
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static PASS_ARGS: AtomicBool = AtomicBool::new(false);
+
+#[cfg(feature = "safe-shared-libraries")]
+thread_local! {
+    static MAIN_IMAGE_FUNCTIONS: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
+}
 
 #[cfg(not(feature = "safe-shared-libraries"))]
 static ALLOW_UNSAFE_SPAWN: AtomicBool = AtomicBool::new(false);
@@ -80,6 +87,13 @@ pub fn should_pass_args() -> bool {
 fn find_shared_library_offset_by_name(name: &OsStr) -> isize {
     #[cfg(feature = "safe-shared-libraries")]
     {
+        // An empty name denotes the image containing procspawn itself.  Calls
+        // into the main executable use offsets from `init`, so they do not
+        // need to search the process's loaded images on every invocation.
+        if name.is_empty() {
+            return init as *const () as isize;
+        }
+
         let mut result = None;
         findshlibs::TargetSharedLibrary::each(|shlib| {
             if shlib.name() == name {
@@ -108,6 +122,10 @@ fn find_shared_library_offset_by_name(name: &OsStr) -> isize {
 fn find_library_name_and_offset(f: *const u8) -> (OsString, isize) {
     #[cfg(feature = "safe-shared-libraries")]
     {
+        if MAIN_IMAGE_FUNCTIONS.with(|functions| functions.borrow().contains(&(f as usize))) {
+            return (OsString::new(), init as *const () as isize);
+        }
+
         let mut result = None;
         findshlibs::TargetSharedLibrary::each(|shlib| {
             let start = shlib
@@ -116,7 +134,19 @@ fn find_library_name_and_offset(f: *const u8) -> (OsString, isize) {
                 .map_or(0, |x| x.actual_virtual_memory_address(shlib).0 as isize);
             for seg in shlib.segments() {
                 if seg.contains_avma(shlib, Avma(f as usize)) {
-                    result = Some((shlib.name().to_owned(), start));
+                    let init_addr = Avma(init as *const () as usize);
+                    let contains_init = seg.contains_avma(shlib, init_addr)
+                        || shlib
+                            .segments()
+                            .any(|seg| seg.contains_avma(shlib, init_addr));
+                    result = Some(if contains_init {
+                        MAIN_IMAGE_FUNCTIONS.with(|functions| {
+                            functions.borrow_mut().push(f as usize);
+                        });
+                        (OsString::new(), init as *const () as isize)
+                    } else {
+                        (shlib.name().to_owned(), start)
+                    });
                     return IterationControl::Break;
                 }
             }
