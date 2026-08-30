@@ -12,15 +12,19 @@
 //!
 //! # Example
 //!
-//! First for all of this to work you need to invoke `procspawn::init` at a
-//! point early in your program (somewhere at the beginning of the main function).
-//! Whatever happens before that point also happens in your spawned functions.
+//! First, invoke `procspawn::init` as the first operation in `main`. A spawned
+//! process starts the executable again and re-enters `main`, so any code before
+//! this call runs again in every child process. Keep application setup and other
+//! side effects after it.
 //!
 //! Subprocesses are by default invoked with the same arguments and environment
 //! variables as the parent process.
 //!
 //! ```rust,no_run
-//! procspawn::init();
+//! fn main() {
+//!     procspawn::init();
+//!     // Application setup starts here.
+//! }
 //! ```
 //!
 //! Now you can start spawning functions:

@@ -210,6 +210,9 @@ impl ProcConfig {
     }
 
     /// Consumes the config and initializes the process.
+    ///
+    /// Call this as the first operation in `main`. Code before this call is
+    /// executed again in every spawned child process.
     pub fn init(&mut self) {
         mark_initialized();
         PASS_ARGS.store(self.pass_args, Ordering::SeqCst);
@@ -242,9 +245,10 @@ impl ProcConfig {
 
 /// Initializes procspawn.
 ///
-/// This function must be called at the beginning of `main`.  Whatever comes
-/// before it is also executed for all processes spawned through the `spawn`
-/// function.
+/// Call this as the first operation in `main`. A spawned process starts the
+/// executable again and re-enters `main`, so code before this call is executed
+/// again in every child process. Keep application setup and other side effects
+/// after it.
 ///
 /// For more complex initializations see [`ProcConfig`](struct.ProcConfig.html).
 pub fn init() {

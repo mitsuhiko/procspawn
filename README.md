@@ -15,12 +15,16 @@ the process boundaries.
 
 ## Example
 
-Step 1: invoke `procspawn::init` at a point early in your program (somewhere at
-the beginning of the main function).  Whatever happens before that point also
-happens in your spawned functions.
+Step 1: invoke `procspawn::init` as the first operation in `main`. A spawned
+process starts the executable again and re-enters `main`, so any code before
+this call runs again in every child process. Keep application setup and other
+side effects after it.
 
 ```rust
-procspawn::init();
+fn main() {
+    procspawn::init();
+    // Application setup starts here.
+}
 ```
 
 Step 2: now you can start spawning functions:
