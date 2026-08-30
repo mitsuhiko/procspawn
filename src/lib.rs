@@ -76,17 +76,17 @@
 //!   across process boundaries.
 //! * `test-support`: when this feature is enabled procspawn can be used
 //!   with rusttest.  See [`testing`](#testing) for more information.
-//! * `json`: enables optional JSON serialization.  For more information see
-//!   [Bincode Limitations](#bincode-limitations).
+//! * `json`: enables optional JSON serialization. For more information see
+//!   [Binary Serialization Limitations](#binary-serialization-limitations).
 //!
-//! # Bincode Limitations
+//! # Binary Serialization Limitations
 //!
-//! This crate uses [`bincode`](https://github.com/servo/bincode) internally
-//! for inter process communication.  Bincode currently has some limitations
-//! which make some serde features incompatible with it.  Most notably if you
-//! use `#[serde(flatten)]` data cannot be sent across the processes.  To
-//! work around this you can enable the `json` feature and wrap affected objects
-//! in the [`Json`](serde/struct.Json.html) wrapper to force JSON serialization.
+//! This crate uses [postcard](https://crates.io/crates/postcard) internally for
+//! inter-process communication. Some serde features are incompatible with this
+//! binary serializer. Most notably, data using `#[serde(flatten)]` cannot be
+//! sent across processes. To work around this, enable the `json` feature and
+//! wrap affected objects in the [`Json`](serde/struct.Json.html) wrapper to
+//! force JSON serialization.
 //!
 //! # Testing
 //!
@@ -167,7 +167,7 @@
 //! * [timeout.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/timeout.rs):
 //!   shows how you can wait on a process with timeouts.
 //! * [bad-serialization.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/bad-serialization.rs):
-//!   shows JSON based workarounds for bincode limitations.
+//!   shows JSON-based workarounds for binary serialization limitations.
 //! * [macro.rs](https://github.com/mitsuhiko/procspawn/blob/master/examples/macro.rs):
 //!   demonstrates macro usage.
 //!
@@ -195,6 +195,3 @@ pub use self::core::{assert_spawn_is_safe, init, ProcConfig};
 pub use self::error::{Location, PanicInfo, SpawnError};
 pub use self::pool::{Pool, PoolBuilder};
 pub use self::proc::{spawn, Builder, JoinHandle};
-
-#[cfg(feature = "async")]
-pub use self::asyncsupport::{spawn_async, AsyncJoinHandle};

@@ -29,7 +29,7 @@ pub fn take_panic(panic: &dyn Any) -> PanicInfo {
         .unwrap_or_else(move || serialize_panic(panic))
 }
 
-pub fn panic_handler(info: &panic::PanicInfo<'_>, capture_backtraces: BacktraceCapture) {
+pub fn panic_handler(info: &panic::PanicHookInfo<'_>, capture_backtraces: BacktraceCapture) {
     PANIC_INFO.with(|pi| {
         #[allow(unused_mut)]
         let mut panic = serialize_panic(info.payload());

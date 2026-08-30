@@ -355,8 +355,8 @@ pub struct ProcessHandle<T> {
     pub(crate) state: Arc<ProcessHandleState>,
 }
 
-fn is_ipc_timeout(err: &ipc_channel::ipc::TryRecvError) -> bool {
-    matches!(err, ipc_channel::ipc::TryRecvError::Empty)
+fn is_ipc_timeout(err: &ipc_channel::TryRecvError) -> bool {
+    matches!(err, ipc_channel::TryRecvError::Empty)
 }
 
 impl<T> ProcessHandle<T> {
@@ -402,9 +402,7 @@ impl<T: Serialize + DeserializeOwned> ProcessHandle<T> {
     pub fn join_timeout(&mut self, timeout: Duration) -> Result<T, SpawnError> {
         let deadline = match Instant::now().checked_add(timeout) {
             Some(deadline) => deadline,
-            None => {
-                return Err(io::Error::new(io::ErrorKind::Other, "timeout out of bounds").into())
-            }
+            None => return Err(io::Error::other("timeout out of bounds").into()),
         };
         let mut to_sleep = Duration::from_millis(1);
         let rv = loop {

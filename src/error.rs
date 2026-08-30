@@ -1,8 +1,8 @@
 use std::fmt;
 use std::io;
 
-use ipc_channel::ipc::{IpcError, TryRecvError};
-use ipc_channel::{Error as BincodeError, ErrorKind as BincodeErrorKind};
+use ipc_channel::SerDeError;
+use ipc_channel::{IpcError, TryRecvError};
 use serde::{Deserialize, Serialize};
 
 /// Represents a panic caugh across processes.
@@ -120,7 +120,7 @@ pub struct SpawnError {
 
 #[derive(Debug)]
 enum SpawnErrorKind {
-    Bincode(BincodeError),
+    Serialization(SerDeError),
     Io(io::Error),
     Panic(PanicInfo),
     IpcChannelClosed(io::Error),
@@ -159,6 +159,12 @@ impl SpawnError {
         matches!(self.kind, SpawnErrorKind::IpcChannelClosed(..))
     }
 
+    pub(crate) fn new_serialization(err: SerDeError) -> SpawnError {
+        SpawnError {
+            kind: SpawnErrorKind::Serialization(err),
+        }
+    }
+
     pub(crate) fn new_remote_close() -> SpawnError {
         SpawnError {
             kind: SpawnErrorKind::IpcChannelClosed(io::Error::new(
@@ -190,7 +196,7 @@ impl SpawnError {
 impl std::error::Error for SpawnError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self.kind {
-            SpawnErrorKind::Bincode(ref err) => Some(err),
+            SpawnErrorKind::Serialization(ref err) => Some(err),
             SpawnErrorKind::Io(ref err) => Some(err),
             SpawnErrorKind::Panic(_) => None,
             SpawnErrorKind::Cancelled => None,
@@ -204,7 +210,9 @@ impl std::error::Error for SpawnError {
 impl fmt::Display for SpawnError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.kind {
-            SpawnErrorKind::Bincode(_) => write!(f, "process spawn error: bincode error"),
+            SpawnErrorKind::Serialization(_) => {
+                write!(f, "process spawn error: serialization error")
+            }
             SpawnErrorKind::Io(_) => write!(f, "process spawn error: i/o error"),
             SpawnErrorKind::Panic(ref p) => write!(f, "process spawn error: panic: {}", p),
             SpawnErrorKind::Cancelled => write!(f, "process spawn error: call cancelled"),
@@ -214,18 +222,6 @@ impl fmt::Display for SpawnError {
                 f,
                 "process spawn error: remote side closed (might have panicked on serialization)"
             ),
-        }
-    }
-}
-
-impl From<BincodeError> for SpawnError {
-    fn from(err: BincodeError) -> SpawnError {
-        // unwrap nested IO errors
-        if let BincodeErrorKind::Io(io_err) = *err {
-            return SpawnError::from(io_err);
-        }
-        SpawnError {
-            kind: SpawnErrorKind::Bincode(err),
         }
     }
 }
@@ -241,10 +237,9 @@ impl From<TryRecvError> for SpawnError {
 
 impl From<IpcError> for SpawnError {
     fn from(err: IpcError) -> SpawnError {
-        // unwrap nested IO errors
         match err {
+            IpcError::SerializationError(err) => SpawnError::new_serialization(err),
             IpcError::Io(err) => SpawnError::from(err),
-            IpcError::Bincode(err) => SpawnError::from(err),
             IpcError::Disconnected => SpawnError::new_remote_close(),
         }
     }

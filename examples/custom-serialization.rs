@@ -29,6 +29,48 @@ impl MyBytes {
     }
 }
 
+#[cfg(unix)]
+fn serialize_ipc_path<S>(path: &Path, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    use std::os::unix::ffi::OsStrExt;
+
+    serializer.serialize_bytes(path.as_os_str().as_bytes())
+}
+
+#[cfg(not(unix))]
+fn serialize_ipc_path<S>(path: &Path, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let path = path
+        .to_str()
+        .ok_or_else(|| <S::Error as serde::ser::Error>::custom("path is not valid UTF-8"))?;
+    serializer.serialize_str(path)
+}
+
+#[cfg(unix)]
+fn deserialize_ipc_path<'de, D>(deserializer: D) -> Result<PathBuf, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    Ok(PathBuf::from(OsString::from_vec(Vec::deserialize(
+        deserializer,
+    )?)))
+}
+
+#[cfg(not(unix))]
+fn deserialize_ipc_path<'de, D>(deserializer: D) -> Result<PathBuf, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(PathBuf::from(String::deserialize(deserializer)?))
+}
+
 impl Serialize for MyBytes {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -36,7 +78,7 @@ impl Serialize for MyBytes {
     {
         if procspawn::serde::in_ipc_mode() {
             println!("serialize in ipc mode");
-            self.path.serialize(serializer)
+            serialize_ipc_path(&self.path, serializer)
         } else {
             println!("serialize in normal mode");
             MyBytesHelper {
@@ -55,7 +97,7 @@ impl<'de> Deserialize<'de> for MyBytes {
     {
         if procspawn::serde::in_ipc_mode() {
             println!("deserialize in ipc mode");
-            let path = PathBuf::deserialize(deserializer)?;
+            let path = deserialize_ipc_path(deserializer)?;
             MyBytes::open(path).map_err(D::Error::custom)
         } else {
             println!("deserialize in normal mode");

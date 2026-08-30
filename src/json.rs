@@ -3,15 +3,12 @@ use serde::ser::{self, Serialize, Serializer};
 
 /// Utility wrapper to force values through JSON serialization.
 ///
-/// By default `procspawn` will use [`bincode`](https://github.com/servo/bincode) to serialize
-/// data across process boundaries.  This has some limitations which can cause serialization
-/// or deserialization to fail for some types.
+/// By default `procspawn` uses [postcard](https://crates.io/crates/postcard) to serialize
+/// data across process boundaries. This can cause serialization or deserialization to fail
+/// for some types, such as values using `#[serde(flatten)]`.
 ///
-/// Since JSON is generally better supported in the serde ecosystem this lets you work
-/// around some known bugs.
-///
-/// * serde flatten not being supported: [bincode#245](https://github.com/servo/bincode/issues/245)
-/// * vectors with unknown length not supported: [bincode#167](https://github.com/servo/bincode/issues/167)
+/// Since JSON is generally better supported in the serde ecosystem, this wrapper can work
+/// around those limitations.
 ///
 /// Examples:
 ///

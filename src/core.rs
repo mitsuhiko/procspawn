@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use findshlibs::{Avma, IterationControl, Segment, SharedLibrary};
 
 use ipc_channel::ipc::{self, IpcReceiver, IpcSender, OpaqueIpcReceiver, OpaqueIpcSender};
-use ipc_channel::ErrorKind as IpcErrorKind;
+use ipc_channel::IpcError;
 use serde::{Deserialize, Serialize};
 
 use crate::error::PanicInfo;
@@ -340,10 +340,10 @@ unsafe fn run_func<A, R>(
         Ok(function(args))
     };
 
-    // sending can fail easily because of bincode limitations.  If you see
+    // Sending can fail because of binary serialization limitations. If you see
     // this in your tracebacks consider using the `Json` wrapper.
     if let Err(err) = with_ipc_mode(|| sender.to().send(rv)) {
-        if let IpcErrorKind::Io(ref io) = *err {
+        if let IpcError::Io(ref io) = err {
             if io.kind() == io::ErrorKind::NotFound || io.kind() == io::ErrorKind::ConnectionReset {
                 // this error is okay.  this means nobody actually
                 // waited for the call, so we just ignore it.

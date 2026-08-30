@@ -14,7 +14,7 @@ keywords = ["proc", "spawn", "subprocess"]
 readme = "README.md"
 autoexamples = true
 autotests = true
-rust-version = "1.70.0"
+rust-version = "1.86.0"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -26,7 +26,7 @@ json = ["serde_json"]
 safe-shared-libraries = ["findshlibs"]
 
 [dependencies]
-ipc-channel = "0.18.2"
+ipc-channel = "0.22.0"
 serde = { version = "1.0.104", features = ["derive"] }
 backtrace = { version = "0.3.73", optional = true, features = ["serde"] }
 libc = "0.2.66"

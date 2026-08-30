@@ -24,10 +24,10 @@ fn main() {
     });
     println!("result with JSON: {:?}", handle.join());
 
-    println!("raw bincode currently does not permit this:");
-    // bincode fails:
+    println!("the default binary serializer currently does not permit this:");
+    // Binary serialization fails:
     let handle = spawn((), |()| BadStruct {
         inner: InnerStruct { value: 42 },
     });
-    println!("result with bincode: {:?}", handle.join());
+    println!("result with the default serializer: {:?}", handle.join());
 }

@@ -16,7 +16,7 @@ fn test_basic() {
 
 #[test]
 fn test_panic() {
-    let handle = spawn((), |()| panic!("something went wrong"));
+    let handle = spawn::<_, ()>((), |()| panic!("something went wrong"));
     let err = handle.join().unwrap_err();
 
     let panic_info = err.panic_info().unwrap();
@@ -25,7 +25,7 @@ fn test_panic() {
 
     let loc = panic_info.location().unwrap();
     assert_eq!(loc.line(), 19);
-    assert_eq!(loc.column(), 33);
+    assert_eq!(loc.column(), 42);
     assert!(loc.file().contains("test_basic.rs"));
 }
 
