@@ -41,6 +41,13 @@ fn test_kill() {
 }
 
 #[test]
+fn test_bad_roundtrip_does_not_hang() {
+    let mut handle = spawn((), |()| BadRoundtrip);
+    let err = handle.join_timeout(Duration::from_secs(2)).unwrap_err();
+    assert!(!err.is_timeout());
+}
+
+#[test]
 fn test_envvar() {
     let val = procspawn::Builder::new()
         .env("FOO", "42")
@@ -110,4 +117,35 @@ fn test_timeout() {
 
     let val = handle.join_timeout(Duration::from_secs(2)).unwrap();
     assert_eq!(val, 42);
+}
+
+#[test]
+fn test_timeout_can_be_retried() {
+    let mut handle = spawn((), |()| {
+        thread::sleep(Duration::from_millis(200));
+        42
+    });
+
+    for _ in 0..2 {
+        let err = handle.join_timeout(Duration::from_millis(10)).unwrap_err();
+        assert!(err.is_timeout());
+    }
+
+    assert_eq!(handle.join_timeout(Duration::from_secs(2)).unwrap(), 42);
+}
+
+#[derive(Debug)]
+struct BadRoundtrip;
+
+impl serde::Serialize for BadRoundtrip {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_u8(42)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for BadRoundtrip {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(BadRoundtrip)
+    }
 }

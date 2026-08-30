@@ -394,12 +394,18 @@ impl<T> ProcessHandle<T> {
 
 impl<T: Serialize + DeserializeOwned> ProcessHandle<T> {
     pub fn join(&mut self) -> Result<T, SpawnError> {
-        let rv = with_ipc_mode(|| self.recv.recv())?.map_err(Into::into);
+        let rv = match with_ipc_mode(|| self.recv.recv()) {
+            Ok(rv) => rv.map_err(Into::into),
+            Err(err) => Err(err.into()),
+        };
         self.wait();
         rv
     }
 
     pub fn join_timeout(&mut self, timeout: Duration) -> Result<T, SpawnError> {
+        // Keep polling with `try_recv` rather than using ipc-channel's native timeout. The
+        // latter can lose a message when a timeout races with a receive on Windows in 0.22:
+        // https://github.com/servo/ipc-channel/issues/450
         let deadline = match Instant::now().checked_add(timeout) {
             Some(deadline) => deadline,
             None => return Err(io::Error::other("timeout out of bounds").into()),
@@ -511,28 +517,39 @@ impl<T: Serialize + DeserializeOwned> JoinHandle<T> {
     /// Wait for the child process to return a result.
     ///
     /// If the join handle was created from a pool the join is virtualized.
-    pub fn join(self) -> Result<T, SpawnError> {
-        match self.inner {
-            Ok(JoinHandleInner::Process(mut handle)) => handle.join(),
-            Ok(JoinHandleInner::Pooled(mut handle)) => handle.join(),
-            Err(err) => Err(err),
+    pub fn join(mut self) -> Result<T, SpawnError> {
+        match &mut self.inner {
+            Ok(JoinHandleInner::Process(handle)) => handle.join(),
+            Ok(JoinHandleInner::Pooled(handle)) => handle.join(),
+            Err(err) => {
+                let mut rv_err = SpawnError::new_consumed();
+                mem::swap(&mut rv_err, err);
+                Err(rv_err)
+            }
         }
     }
 
     /// Like `join` but with a timeout.
     ///
     /// Can be called multiple times. If anything other than a timeout error is returned, the
-    /// handle becomes unusuable, and subsequent calls to either `join` or `join_timeout` will
+    /// handle becomes unusable, and subsequent calls to either `join` or `join_timeout` will
     /// return an error.
     pub fn join_timeout(&mut self, timeout: Duration) -> Result<T, SpawnError> {
         match self.inner {
             Ok(ref mut handle_inner) => {
                 let result = match handle_inner {
-                    JoinHandleInner::Process(ref mut handle) => handle.join_timeout(timeout),
-                    JoinHandleInner::Pooled(ref mut handle) => handle.join_timeout(timeout),
+                    JoinHandleInner::Process(handle) => handle.join_timeout(timeout),
+                    JoinHandleInner::Pooled(handle) => handle.join_timeout(timeout),
                 };
+                let timed_out = result.as_ref().err().is_some_and(|err| err.is_timeout());
 
-                if result.is_ok() {
+                if !timed_out {
+                    if result.is_err() {
+                        match handle_inner {
+                            JoinHandleInner::Process(handle) => handle.kill().ok(),
+                            JoinHandleInner::Pooled(handle) => handle.kill().ok(),
+                        };
+                    }
                     self.inner = Err(SpawnError::new_consumed());
                 }
 
@@ -544,6 +561,12 @@ impl<T: Serialize + DeserializeOwned> JoinHandle<T> {
                 Err(rv_err)
             }
         }
+    }
+}
+
+impl<T> Drop for JoinHandle<T> {
+    fn drop(&mut self) {
+        self.kill().ok();
     }
 }
 

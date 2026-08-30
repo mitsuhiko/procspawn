@@ -15,20 +15,35 @@ use crate::error::SpawnError;
 use crate::proc::{Builder, JoinHandle, JoinHandleInner, ProcCommon, ProcessHandleState};
 use crate::serde::with_ipc_mode;
 
-type WaitFunc = Box<dyn FnOnce() -> bool + Send>;
+enum WaitResult {
+    Finished,
+    Restart,
+}
+
+type WaitFunc = Box<dyn FnOnce() -> WaitResult + Send>;
 type NotifyErrorFunc = Box<dyn FnMut(SpawnError) + Send>;
 
 #[derive(Debug)]
 pub struct PooledHandleState {
     pub cancelled: AtomicBool,
+    pub finished: AtomicBool,
     pub process_handle_state: Mutex<Option<Arc<ProcessHandleState>>>,
 }
 
 impl PooledHandleState {
+    pub fn finish(&self) {
+        let mut process_handle_state = self.process_handle_state.lock().unwrap();
+        self.finished.store(true, Ordering::SeqCst);
+        *process_handle_state = None;
+    }
+
     pub fn kill(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
-        if let Some(ref process_handle_state) = *self.process_handle_state.lock().unwrap() {
-            process_handle_state.kill();
+        let process_handle_state = self.process_handle_state.lock().unwrap();
+        if !self.finished.load(Ordering::SeqCst) {
+            if let Some(ref process_handle_state) = *process_handle_state {
+                process_handle_state.kill();
+            }
         }
     }
 }
@@ -62,10 +77,7 @@ impl<T: Serialize + DeserializeOwned> PooledHandle<T> {
         match self.waiter_rx.recv_timeout(timeout) {
             Ok(Ok(rv)) => Ok(rv),
             Ok(Err(err)) => Err(err),
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                self.kill().ok();
-                Err(SpawnError::new_timeout())
-            }
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(SpawnError::new_timeout()),
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(SpawnError::new_remote_close()),
         }
     }
@@ -154,23 +166,26 @@ impl Pool {
 
         let shared = Arc::new(PooledHandleState {
             cancelled: AtomicBool::new(false),
+            finished: AtomicBool::new(false),
             process_handle_state: Mutex::new(None),
         });
+        let waiter_shared = shared.clone();
+        let error_waiter_shared = shared.clone();
 
         self.sender
             .send((
                 call,
                 shared.clone(),
-                Box::new(move || {
-                    with_ipc_mode(|| {
-                        if let Ok(rv) = return_rx.recv() {
-                            waiter_tx.send(rv.map_err(Into::into)).is_ok()
-                        } else {
-                            false
-                        }
-                    })
+                Box::new(move || match with_ipc_mode(|| return_rx.recv()) {
+                    Ok(rv) => {
+                        waiter_shared.finish();
+                        waiter_tx.send(rv.map_err(Into::into)).ok();
+                        WaitResult::Finished
+                    }
+                    Err(_) => WaitResult::Restart,
                 }),
                 Box::new(move |error| {
+                    error_waiter_shared.finish();
                     error_waiter_tx.send(Err(error)).ok();
                 }),
             ))
@@ -476,15 +491,19 @@ fn spawn_worker(
                             }
                         }
 
-                        if !restart && !wait_func() {
+                        if !restart && matches!(wait_func(), WaitResult::Restart) {
                             restart = true;
                         }
 
-                        *state.process_handle_state.lock().unwrap() = None;
-
                         if restart {
+                            // A receive failure does not necessarily mean the worker exited. In
+                            // particular, deserialization can fail after a healthy worker sent its
+                            // response, so stop it before waiting for and replacing it.
+                            state.kill();
                             check_for_restart(&mut err_func);
                         }
+
+                        *state.process_handle_state.lock().unwrap() = None;
                     }
 
                     shared.active_count.fetch_sub(1, Ordering::SeqCst);
