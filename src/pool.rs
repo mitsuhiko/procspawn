@@ -14,6 +14,7 @@ use crate::core::MarshalledCall;
 use crate::error::SpawnError;
 use crate::proc::{Builder, JoinHandle, JoinHandleInner, ProcCommon, ProcessHandleState};
 use crate::serde::with_ipc_mode;
+use crate::sync::MutexExt;
 
 enum WaitResult {
     Finished,
@@ -32,14 +33,14 @@ pub struct PooledHandleState {
 
 impl PooledHandleState {
     pub fn finish(&self) {
-        let mut process_handle_state = self.process_handle_state.lock().unwrap();
+        let mut process_handle_state = self.process_handle_state.lock_unpoisoned();
         self.finished.store(true, Ordering::SeqCst);
         *process_handle_state = None;
     }
 
     pub fn kill(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
-        let process_handle_state = self.process_handle_state.lock().unwrap();
+        let process_handle_state = self.process_handle_state.lock_unpoisoned();
         if !self.finished.load(Ordering::SeqCst) {
             if let Some(ref process_handle_state) = *process_handle_state {
                 process_handle_state.kill();
@@ -55,7 +56,7 @@ pub struct PooledHandle<T> {
 
 impl<T> PooledHandle<T> {
     pub fn process_handle_state(&self) -> Option<Arc<ProcessHandleState>> {
-        self.shared.process_handle_state.lock().unwrap().clone()
+        self.shared.process_handle_state.lock_unpoisoned().clone()
     }
 
     pub fn kill(&mut self) -> Result<(), SpawnError> {
@@ -130,7 +131,7 @@ impl Pool {
 
     /// Returns the size of the pool.
     pub fn size(&self) -> usize {
-        self.shared.monitors.lock().unwrap().len()
+        self.shared.monitors.lock_unpoisoned().len()
     }
 
     /// Returns the number of jobs waiting to executed in the pool.
@@ -208,12 +209,16 @@ impl Pool {
         }
 
         let generation = self.shared.join_generation.load(Ordering::SeqCst);
-        let mut lock = self.shared.empty_trigger.lock().unwrap();
+        let mut lock = self.shared.empty_trigger.lock_unpoisoned();
 
         while generation == self.shared.join_generation.load(Ordering::Relaxed)
             && self.shared.has_work()
         {
-            lock = self.shared.empty_condvar.wait(lock).unwrap();
+            lock = self
+                .shared
+                .empty_condvar
+                .wait(lock)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
         }
 
         // increase generation if we are the first thread to come out of the loop
@@ -244,8 +249,8 @@ impl Pool {
             return;
         }
         self.shared.dead.store(true, Ordering::SeqCst);
-        for monitor in self.shared.monitors.lock().unwrap().iter_mut() {
-            if let Some(mut join_handle) = monitor.join_handle.lock().unwrap().take() {
+        for monitor in self.shared.monitors.lock_unpoisoned().iter_mut() {
+            if let Some(mut join_handle) = monitor.join_handle.lock_unpoisoned().take() {
                 join_handle.kill().ok();
             }
         }
@@ -322,7 +327,7 @@ impl PoolBuilder {
         });
 
         {
-            let mut monitors = shared.monitors.lock().unwrap();
+            let mut monitors = shared.monitors.lock_unpoisoned();
             for _ in 0..self.size {
                 monitors.push(spawn_worker(shared.clone(), self)?);
             }
@@ -364,11 +369,7 @@ impl PoolShared {
 
     fn no_work_notify_all(&self) {
         if !self.has_work() {
-            drop(
-                self.empty_trigger
-                    .lock()
-                    .expect("Unable to notify all joining threads"),
-            );
+            drop(self.empty_trigger.lock_unpoisoned());
             self.empty_condvar.notify_all();
         }
     }
@@ -405,14 +406,14 @@ fn spawn_worker(
             if disable_stderr {
                 builder.stderr(process::Stdio::null());
             }
-            *join_handle.lock().unwrap() = Some(builder.spawn(call_rx, |rx| {
+            *join_handle.lock_unpoisoned() = Some(builder.spawn(call_rx, |rx| {
                 while let Ok(call) = rx.recv() {
                     // we never want panic handling here as we're going to
                     // defer this to the process'.
                     call.call(false);
                 }
             }));
-            *current_call_tx.lock().unwrap() = Some(call_tx);
+            *current_call_tx.lock_unpoisoned() = Some(call_tx);
         }
     }));
 
@@ -423,7 +424,7 @@ fn spawn_worker(
         move |f: &mut NotifyErrorFunc| {
             // something went wrong so we're expecting the join handle to
             // indicate an error.
-            if let Some(join_handle) = join_handle.lock().unwrap().take() {
+            if let Some(join_handle) = join_handle.lock_unpoisoned().take() {
                 match join_handle.join() {
                     Ok(()) => f(SpawnError::from(io::Error::new(
                         io::ErrorKind::BrokenPipe,
@@ -435,7 +436,7 @@ fn spawn_worker(
 
             // next step is respawning the client.
             if !shared.dead.load(Ordering::SeqCst) {
-                (*spawn.lock().unwrap())();
+                (*spawn.lock_unpoisoned())();
             }
         }
     };
@@ -454,10 +455,7 @@ fn spawn_worker(
                     let (call, state, wait_func, mut err_func) = {
                         // Only lock jobs for the time it takes
                         // to get a job, not run it.
-                        let lock = shared
-                            .call_receiver
-                            .lock()
-                            .expect("Monitor thread unable to lock call receiver");
+                        let lock = shared.call_receiver.lock_unpoisoned();
                         match lock.recv() {
                             Ok(rv) => rv,
                             Err(_) => break,
@@ -471,14 +469,14 @@ fn spawn_worker(
                     if state.cancelled.load(Ordering::SeqCst) {
                         err_func(SpawnError::new_cancelled());
                     } else {
-                        if let Some(ref mut handle) = *join_handle.lock().unwrap() {
-                            *state.process_handle_state.lock().unwrap() =
+                        if let Some(ref mut handle) = *join_handle.lock_unpoisoned() {
+                            *state.process_handle_state.lock_unpoisoned() =
                                 handle.process_handle_state();
                         }
 
                         let mut restart = false;
                         {
-                            let mut call_tx = current_call_tx.lock().unwrap();
+                            let mut call_tx = current_call_tx.lock_unpoisoned();
                             if let Some(ref mut call_tx) = *call_tx {
                                 match with_ipc_mode(|| call_tx.send(call)) {
                                     Ok(()) => {}
@@ -503,7 +501,7 @@ fn spawn_worker(
                             check_for_restart(&mut err_func);
                         }
 
-                        *state.process_handle_state.lock().unwrap() = None;
+                        *state.process_handle_state.lock_unpoisoned() = None;
                     }
 
                     shared.active_count.fetch_sub(1, Ordering::SeqCst);
@@ -513,7 +511,7 @@ fn spawn_worker(
             .unwrap();
     }
 
-    (*spawn.lock().unwrap())();
+    (*spawn.lock_unpoisoned())();
 
     Ok(WorkerMonitor { join_handle })
 }

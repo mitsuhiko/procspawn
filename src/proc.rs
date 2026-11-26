@@ -17,6 +17,8 @@ use crate::core::{assert_spawn_okay, should_pass_args, MarshalledCall, ENV_NAME}
 use crate::error::{PanicInfo, SpawnError};
 use crate::pool::PooledHandle;
 use crate::serde::with_ipc_mode;
+#[cfg(unix)]
+use crate::sync::MutexExt;
 
 #[cfg(unix)]
 type PreExecFunc = dyn FnMut() -> io::Result<()> + Send + Sync + 'static;
@@ -248,7 +250,7 @@ impl Builder {
                 let func = func.clone();
                 unsafe {
                     #[allow(clippy::needless_borrow)]
-                    child.pre_exec(move || (&mut *func.lock().unwrap())());
+                    child.pre_exec(move || (&mut *func.lock_unpoisoned())());
                 }
             }
         }

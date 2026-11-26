@@ -182,6 +182,7 @@ mod core;
 mod error;
 mod panic;
 mod pool;
+mod sync;
 
 #[cfg(feature = "json")]
 mod json;
